@@ -147,7 +147,7 @@ MODULES			+= $(foreach sdir,$(LIBRARIES_DIR),$(wildcard $(sdir)/*))
 EXTRA_INCDIR 	= include . libesphttpd/include
 
 # libraries used in this project, mainly provided by the SDK
-LIBS = c gcc hal phy pp net80211 wpa main lwip json upgrade ssl
+LIBS = c gcc hal phy pp net80211 wpa main lwip upgrade ssl pwm
 
 # Add the HTTPD libraries.
 LIBS += esphttpd webpages-espfs

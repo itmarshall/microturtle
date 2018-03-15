@@ -7,9 +7,6 @@
 #ifndef _VM_H
 #define _VM_H
 
-#include "esp8266.h"
-#include "ets_sys.h"
-
 #include "motors.h"
 
 /*

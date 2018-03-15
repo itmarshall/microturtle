@@ -336,6 +336,7 @@ LOCAL void ICACHE_FLASH_ATTR vm_execute_task(os_event_t *event) {
 	uint32_t addr;
 	stack_frame_t *sf;
 	int32_t id;
+	uint32_t ii;
 
 	// Execute the code instruction.
 	bool auto_update_pc = true;
@@ -533,13 +534,20 @@ LOCAL void ICACHE_FLASH_ATTR vm_execute_task(os_event_t *event) {
 			// returning from this call.
 			sp->pc.idx += INSTR_LEN[code[0]];
 
-			// Create a stack frame, add it to the end of the stack and point to it.
+			// Create a new stack frame.
 			sf = create_stack_frame(&program.functions[id]);
 			if (sf == NULL) {
 				// Could not create the stack frame.
 				program_error("Unable to create stack frame for CALL instruction.");
 				return;
 			}
+
+			// Copy any parameters to the new stack frame's local variables.
+			for (ii = program.functions[id].argument_count - 1; ii >= 0; ii++) {
+				sf->locals[ii] = stack_pop();
+			}
+
+			// Add the stack frame to the end of the stack and point to it.
 			sf->prev = sp;
 			sp->next = sf;
 			sp = sf;

@@ -1,0 +1,52 @@
+.banner {
+	width: 100%;
+	background-color: #3e3e3e;
+	color: #fff;
+	font-size: 1em;
+	margin-bottom: 1em;
+	padding: 5px;
+}
+
+body {
+	margin: 0px;
+}
+
+p {
+	margin-left: 20px;
+}
+
+.button-bar {
+	display: block;
+	width: 100%;
+	text-align: center;
+}
+.button {
+	width: 180px;
+	padding: 14px 10px;
+	background-color: #a0c8ff;
+	cursor: pointer;
+	margin: 0px 20px 0px 20px;
+	display: inline-block;
+	border-radius: 5px;
+	text-align: center;
+	text-decoration-line: none;
+	color: #000;
+}
+
+.button:hover {
+	background-color: #c6deff;
+}
+
+.ace_editor {
+	border: 1px solid lightgrey;
+	margin: auto;
+	height: 200px;
+	width: 80%;
+}
+.editor { 
+	position: absolute;
+	top: 0;
+	right: 0;
+	bottom: 0;
+	left: 0;
+}

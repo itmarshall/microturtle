@@ -132,7 +132,7 @@ LOCAL inline int32_t stack_pop();
 LOCAL prog_status_t program_status = IDLE;
 
 // The program being executed.
-LOCAL program_t program;
+LOCAL program_t *program;
 
 // The head of the stack.
 LOCAL stack_frame_t *stack = NULL;
@@ -150,11 +150,15 @@ LOCAL os_event_t vm_exec_queue[EXEC_INSTR_QUEUE_LEN];
 LOCAL os_timer_t move_pause_timer;
 
 /*
- * Runs a program on the micro-turtle in the background. The supplied program information can be
- * freed after this invocation, as a local copy is made prior to running the program.
+ * Runs a program on the micro-turtle in the background. The supplied program information is used
+ * directoy, so the memory cannot be modified. The memory will automatically be freed when the
+ * program's execution has halted.
  */
 bool ICACHE_FLASH_ATTR run_program(program_t *prog) {
-	// Set the status to be idle, while we set the program up.
+	// Stop any currently running program.
+	if (program_status == RUNNING) {
+		stop_program();
+	}
 	program_status = IDLE;
 
 	// Check the program's validity - basic checks only.
@@ -204,40 +208,11 @@ bool ICACHE_FLASH_ATTR run_program(program_t *prog) {
 	// Delete any old program information.
 	free_program();
 
-	// Allocate the memory for the progam functions.
-	program.functions = (function_t *)os_malloc(prog->function_count * sizeof(function_t));
-	if (program.functions == NULL) {
-		os_printf("Unable to allocate memory for program functions.\n");
-		return false;
-	}
-	for (uint32_t ii = 0; ii < prog->function_count; ii++) {
-		program.functions[ii].code = os_malloc(program.functions[ii].length * sizeof(uint8_t));
-		if (program.functions[ii].code == NULL) {
-			os_printf("Unable to allocate memory for function %d.\n", ii);
-			for (uint32_t jj = 0; jj < ii; jj++) {
-				os_free(program.functions[ii].code);
-			}
-			os_free(program.functions);
-			return false;
-		}
-	}
-
-	// Copy the program locally.
-	program.global_count = prog->global_count;
-	program.function_count = prog->function_count;
-	for (uint32_t ii = 0; ii < prog->function_count; ii++) {
-		function_t *src = &prog->functions[ii];
-		function_t *dst = &program.functions[ii];
-		dst->id             = ii;
-		dst->argument_count = src->argument_count;
-		dst->local_count    = src->local_count;
-		dst->stack_size     = src->stack_size;
-		dst->length         = src->length;
-		os_memcpy(dst->code, src->code, src->length * sizeof(uint8_t));
-	}
+	// Copy the program pointer locally.
+	program = prog;
 
 	// Initialise the stack.
-	stack_frame_t *stack = create_stack_frame(&program.functions[0]);
+	stack_frame_t *stack = create_stack_frame(&program->functions[0]);
 	if (stack == NULL) {
 		free_program();
 		return false;
@@ -261,18 +236,21 @@ bool ICACHE_FLASH_ATTR run_program(program_t *prog) {
  * Deallocates the storage for the program and all its' functions, stacks and global variables.
  */
 LOCAL void ICACHE_FLASH_ATTR free_program() {
-	// Free the functions within the program.
-	if (program.functions != NULL) {
-		for (uint32_t ii = 0; ii < program.function_count; ii++) {
-			if (program.functions[ii].code != NULL) {
-				os_free(program.functions[ii].code);
+	if (program != NULL) {
+		// Free the functions within the program.
+		if (program->functions != NULL) {
+			for (uint32_t ii = 0; ii < program->function_count; ii++) {
+				if (program->functions[ii].code != NULL) {
+					os_free(program->functions[ii].code);
+				}
 			}
+			os_free(program->functions);
 		}
-		os_free(program.functions);
+
+		// Free the program itself.
+		os_free(program);
+		program = NULL;
 	}
-	program.global_count = 0;
-	program.function_count = 0;
-	program.functions = NULL;
 
 	// Free the stack memory.
 	while (stack != NULL) {
@@ -281,8 +259,8 @@ LOCAL void ICACHE_FLASH_ATTR free_program() {
 		os_free(s->locals);
 		os_free(s->stack);
 		os_free(s);
+		stack = NULL;
 	}
-	stack = NULL;
 	sp = NULL;
 
 	// Free the global memory.
@@ -297,8 +275,14 @@ LOCAL void ICACHE_FLASH_ATTR free_program() {
  * Stops the execution of a program and frees the space for it.
  */
 void ICACHE_FLASH_ATTR stop_program() {
+	// Signal the program to stop running.
 	program_status = IDLE;
-	free_program();
+
+	// Stop the motors.
+	drive_motors(0, 0, 1, NULL);
+
+	// Call to execute the next instruction, which will safely free the memory.
+	execute_instruction();
 }
 
 /*
@@ -316,19 +300,23 @@ LOCAL void ICACHE_FLASH_ATTR execute_instruction() {
  */
 LOCAL void ICACHE_FLASH_ATTR vm_execute_task(os_event_t *event) {
 	// Ensure we're still running the program.
-	if (program_status != RUNNING) {
-		os_printf("Not executing instruction as program status is no running.\n");
+	if ((program_status != RUNNING) || (program == NULL)) {
+		if (program != NULL) {
+			free_program();
+		}
+		program_status = IDLE;
+		os_printf("Not executing instruction as program status is not running.\n");
 		return;
 	}
 
 	// Check we have enough space for this instruction.
-	if ((sp->pc.idx + INSTR_LEN[sp->pc.func]) > program.functions[sp->pc.func].length) {
+	if ((sp->pc.idx + INSTR_LEN[sp->pc.func]) > program->functions[sp->pc.func].length) {
 		os_printf("End of function reached without RET/STOP instruction.");
 		stop_program();
 	}
 
 	// Get the code at the current program counter.
-	uint8_t *code = &program.functions[sp->pc.func].code[sp->pc.idx];
+	uint8_t *code = &program->functions[sp->pc.func].code[sp->pc.idx];
 
 	// Define variables for use within the below switch block.
 	int32_t operand1;
@@ -525,7 +513,7 @@ LOCAL void ICACHE_FLASH_ATTR vm_execute_task(os_event_t *event) {
 		case INSTR_CALL:
 			// Calls a function. First, check the function ID is valid.
 			id = BYTES_TO_INT32(&code[1]);
-			if ((id < 0) || (id > program.function_count)) {
+			if ((id < 0) || (id > program->function_count)) {
 				program_error("Invalid function ID for CALL instruction.");
 				return;
 			}
@@ -535,7 +523,7 @@ LOCAL void ICACHE_FLASH_ATTR vm_execute_task(os_event_t *event) {
 			sp->pc.idx += INSTR_LEN[code[0]];
 
 			// Create a new stack frame.
-			sf = create_stack_frame(&program.functions[id]);
+			sf = create_stack_frame(&program->functions[id]);
 			if (sf == NULL) {
 				// Could not create the stack frame.
 				program_error("Unable to create stack frame for CALL instruction.");
@@ -543,7 +531,7 @@ LOCAL void ICACHE_FLASH_ATTR vm_execute_task(os_event_t *event) {
 			}
 
 			// Copy any parameters to the new stack frame's local variables.
-			for (ii = program.functions[id].argument_count - 1; ii >= 0; ii++) {
+			for (ii = program->functions[id].argument_count - 1; ii >= 0; ii++) {
 				sf->locals[ii] = stack_pop();
 			}
 
@@ -583,7 +571,7 @@ LOCAL void ICACHE_FLASH_ATTR vm_execute_task(os_event_t *event) {
 		case INSTR_BR:
 			// Performs an unconditional branch.
 			addr = BYTES_TO_INT32(&code[1]);
-			if (addr > program.functions[sp->pc.func].length) {
+			if (addr > program->functions[sp->pc.func].length) {
 				program_error("Cannot branch beyond function boundary.");
 				return;
 			}
@@ -594,7 +582,7 @@ LOCAL void ICACHE_FLASH_ATTR vm_execute_task(os_event_t *event) {
 			// Performs a conditional branch, if the stack value is true.
 			if (stack_pop() != 0) {
 				addr = BYTES_TO_INT32(&code[1]);
-				if (addr > program.functions[sp->pc.func].length) {
+				if (addr > program->functions[sp->pc.func].length) {
 					program_error("Cannot branch beyond function boundary.");
 					return;
 				}
@@ -606,7 +594,7 @@ LOCAL void ICACHE_FLASH_ATTR vm_execute_task(os_event_t *event) {
 			// Performs a conditional branch, if the stack value is false.
 			if (stack_pop() == 0) {
 				addr = BYTES_TO_INT32(&code[1]);
-				if (addr > program.functions[sp->pc.func].length) {
+				if (addr > program->functions[sp->pc.func].length) {
 					program_error("Cannot branch beyond function boundary.");
 					return;
 				}
@@ -753,9 +741,7 @@ void ICACHE_FLASH_ATTR init_vm() {
 	program_status = IDLE;
 
 	// Initialise the program to be empty.
-	program.global_count = 0;
-	program.function_count = 0;
-	program.functions = NULL;
+	program = NULL;
 
 	// Initialise the stack to be empty.
 	stack = NULL;

@@ -278,7 +278,13 @@ LOCAL int cgiRunBytecode(HttpdConnData *connData) {
 		httpCodeReturn(connData, 400, "Bad parameter", "Invalid \"code\" parameter.");
 		return HTTPD_CGI_DONE;
 	}
-	program_t program;
+	program_t *program;
+	program = (program_t *)os_malloc(sizeof(program_t));
+	if (program == NULL) {
+		httpCodeReturn(connData, 500, "Internal error", 
+				"Unable to allocate memory to process program.");
+		return HTTPD_CGI_DONE;
+	}
 
 	// Handle the top-level properties.
 	int match_index;
@@ -295,12 +301,12 @@ LOCAL int cgiRunBytecode(HttpdConnData *connData) {
 							"Invalid global count in \"code\" parameter.");
 					return HTTPD_CGI_DONE;
 				}
-				program.global_count = (uint32_t)count;
+				program->global_count = (uint32_t)count;
 				have_globals = true;
 				} break;
 			case 1: {
 				// This is the function definition.
-				int ret = parse_functions(&index, code, CODE_LEN, &program, connData);
+				int ret = parse_functions(&index, code, CODE_LEN, program, connData);
 				if (ret == -1) {
 					// An error occurred (which is reported inside parse_functions).
 					return HTTPD_CGI_DONE;
@@ -327,7 +333,7 @@ LOCAL int cgiRunBytecode(HttpdConnData *connData) {
 	}
 
 	// We now have a valid program structure, start execution of the program.
-	run_program(&program);
+	run_program(program);
 	return HTTPD_CGI_DONE;
 }
 

@@ -1164,9 +1164,8 @@ CapturingErrorListener.prototype.syntaxError = function( recognizer, offendingSy
  * Helper function used to invoke Antlr on a Logo program using the LogoDefs and
  * LogoRefs listeners and return the results.
  */
-function _lexAndParseLogoProgram() {
+function _lexAndParseLogoProgram(input) {
     // Parse the Logo program into a parse tree.
-    var input = editor.getValue();
     var chars = new antlr4.InputStream(input);
     var lexer = new logoLexer.logoLexer(chars);
     var tokens = new antlr4.CommonTokenStream(lexer);
@@ -1201,9 +1200,9 @@ function _lexAndParseLogoProgram() {
  * Verifies that a program is syntactically valid, returning all errors found, 
  * if any.
  */
-function verifyProgram() {
+function verifyProgram(input) {
     // Run the Logo program through the Antlr lexer and parser.
-    var results = _lexAndParseLogoProgram();
+    var results = _lexAndParseLogoProgram(input);
 
     // Return the results.
     return results.exceptions;
@@ -1215,7 +1214,8 @@ function verifyProgram() {
  */
 function compileProgram() {
     // Run the Logo program through the Antlr lexer and parser.
-    var results = _lexAndParseLogoProgram();
+    var input = editor.getValue();
+    var results = _lexAndParseLogoProgram(input);
 
     if (results.exceptions.length === 0) {
         // Run through the tree to create the assembley code.

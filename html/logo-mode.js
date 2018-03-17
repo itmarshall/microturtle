@@ -1,4 +1,4 @@
-ace.define('ace/mode/logo-mode', function(require, exports, module) {
+ace.define('ace/mode/logo', function(require, exports, module) {
     var oop = require("ace/lib/oop");
     var TextMode = require("ace/mode/text").Mode;
     var TextHighlightRules = require("ace/mode/text_highlight_rules").TextHighlightRules;
@@ -28,7 +28,21 @@ ace.define('ace/mode/logo-mode', function(require, exports, module) {
     oop.inherits(LogoMode, TextMode);
 
     (function() {
-        this.$id = "ace/mode/logo-mode";
+        this.$id = "ace/mode/logo";
+
+		var WorkerClient = require("ace/worker/worker_client").WorkerClient;
+		this.createWorker = function(session) {
+			this.$worker = new WorkerClient(["ace"], "ace/mode/logo_worker", "LogoWorker");
+			this.$worker.attachToDocument(session.getDocument());
+
+			this.$worker.on("annotate", function(e) {
+				session.setAnnotations(e.data);
+			});
+			this.$worker.on("terminate", function() {
+				session.clearAnnotations();
+			});
+			return this.$worker;
+		};
     }).call(LogoMode.prototype);
 
     exports.Mode = LogoMode;

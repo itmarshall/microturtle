@@ -84,10 +84,20 @@ end
 
             if (results.success) {
                 // Print out the compiled bytecode.
+				var obj = {"program": results.bytecode};
+				var xhr = new XMLHttpRequest();
+				xhr.open('PUSH', '/runBytecode.cgi');
+				xhr.onreadystatechange = function() {
+					if (xhr.readyState == XMLHttpRequest.DONE) {
+						console.log("Completed with status: " + xhr.status);
+					}
+				};
+				xhr.send(JSON.stringify(obj));
                 // TODO: Run it!
             } else {
                 // Something was wrong, print out the errors.
 				handleErrors(results.exceptions);
+				alert("Problems were found in the program, please fix.");
             }
         }
     </script>

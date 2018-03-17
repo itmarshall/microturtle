@@ -1,4 +1,3 @@
-importScripts(origin + "/logo.min.js");
 "no use strict";
 !(function(window) {
 if (typeof window.window != "undefined" && window.document)
@@ -1406,6 +1405,7 @@ var Mirror = exports.Mirror = function(sender) {
 
 });
 
+importScripts(origin + "/logo.min.js");
 ace.define("ace/mode/logo_worker",[], function(require, exports, module) {
 "use strict";
 

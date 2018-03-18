@@ -16,7 +16,7 @@
 #define PWM_PERIOD 20000 // 20ms
 #define PWM_MIN 22222    // 1ms
 #define PWM_MAX 44444    // 2ms
-#define SERVO_UP_ANGLE -90
+#define SERVO_UP_ANGLE 90
 #define SERVO_DOWN_ANGLE -90
 
 // Absolute value macro.
@@ -105,6 +105,7 @@ LOCAL void ICACHE_FLASH_ATTR set_servo(int8_t position) {
 	} else if (position > 90) {
 		position = 90;
 	}
+	os_printf("Setting servo angle to %d.\n", position);
 
 	// Calculate the duty cycle to keep it between 1ms (-90 degs) and 2ms (+90 degs).
 	uint32_t pwm_duty = ((uint32_t)(position + 90) * (PWM_MAX - PWM_MIN) / 180) + PWM_MIN;

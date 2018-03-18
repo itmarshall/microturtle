@@ -13,7 +13,10 @@
 #include "motors.h"
 
 // Helper macro to convert 4 bytes from an array into a 32-bit integer.
-#define BYTES_TO_INT32(a) ((a)[0] << 24 | (a)[1] << 16 | (a)[2] << 8 | (a)[3])
+#define BYTES_TO_INT32(arr, idx) (((arr)[(idx)]     << 24) + \
+                                  ((arr)[(idx) + 1] << 16) + \
+								  ((arr)[(idx) + 2] << 8) + \
+								  ((arr)[(idx) + 3]))
 
 // The maximum number of variables in a function or globals.
 #define MAX_VAR_COUNT 32
@@ -29,7 +32,7 @@
 
 // The priority for the task used to execute the next program instruction.
 // This is performed in a task to ensure long running programs don't overload the ESP8266.
-#define EXEC_INSTR_PRI 0
+#define EXEC_INSTR_PRI 1
 
 // The queue length for the task used to execute the next program instruction.
 #define EXEC_INSTR_QUEUE_LEN 2
@@ -104,9 +107,9 @@ typedef struct stack_frame_t {
 	pc_t pc;                    // The program counter for this frame's execution.
 	uint32_t local_count;       // The number of local variables in this frame.
 	int32_t *locals;            // The array of local variables.
+	uint32_t stack_size;        // The number of entries currently in this frame's operand stack.
 	uint32_t max_stack_size;    // The maximum number of stack entries for this frame.
 	int32_t *stack;             // The operand stack for this frame.
-	uint32_t stack_size;        // The number of entries currently in this frame's operand stack.
 	struct stack_frame_t *prev; // Pointer to the previous frame (if any).
 	struct stack_frame_t *next; // Pointer to the next frame (if any).
 } stack_frame_t;
@@ -212,19 +215,25 @@ bool ICACHE_FLASH_ATTR run_program(program_t *prog) {
 	program = prog;
 
 	// Initialise the stack.
-	stack_frame_t *stack = create_stack_frame(&program->functions[0]);
+	stack = create_stack_frame(&program->functions[0]);
 	if (stack == NULL) {
 		free_program();
 		return false;
 	}
+	sp = stack;
 
 	// Initialise the globals.
 	globals.global_count = prog->global_count;
-	globals.values = (int32_t *)os_malloc(globals.global_count * sizeof(int32_t));
-	if (globals.values == NULL) {
-		os_printf("Unable to allocate global memory.\n");
-		free_program();
-		return false;
+	if (globals.values > 0) {
+		os_printf("Allocating %d global variables.\n", globals.global_count);
+		globals.values = (int32_t *)os_malloc(globals.global_count * sizeof(int32_t));
+		if (globals.values == NULL) {
+			os_printf("Unable to allocate global memory.\n");
+			free_program();
+			return false;
+		}
+	} else {
+		globals.values = NULL;
 	}
 
 	// Start the program by executing the first instuction.
@@ -276,6 +285,7 @@ LOCAL void ICACHE_FLASH_ATTR free_program() {
  */
 void ICACHE_FLASH_ATTR stop_program() {
 	// Signal the program to stop running.
+	os_printf("Stopping program.\n");
 	program_status = IDLE;
 
 	// Stop the motors.
@@ -317,6 +327,8 @@ LOCAL void ICACHE_FLASH_ATTR vm_execute_task(os_event_t *event) {
 
 	// Get the code at the current program counter.
 	uint8_t *code = &program->functions[sp->pc.func].code[sp->pc.idx];
+	os_printf("Executing instruction at function %d, index %d: %d.\n",
+			sp->pc.func, sp->pc.idx, code[0]);
 
 	// Define variables for use within the below switch block.
 	int32_t operand1;
@@ -408,71 +420,139 @@ LOCAL void ICACHE_FLASH_ATTR vm_execute_task(os_event_t *event) {
 			break;
 		case INSTR_ICONST:
 			// Store the constant from the byte code on the stack.
-			stack_push(BYTES_TO_INT32(&code[1]));
+			stack_push(BYTES_TO_INT32(code, 1));
 			break;
 		case INSTR_ILOAD_0:
 			// Load the value from the first variable on to the stack.
-			stack_push(sp->locals[0]);
+			if (sf->locals != NULL) {
+				stack_push(sp->locals[0]);
+			} else {
+				program_error("Invalid local variable - 0");
+			}
 			break;
 		case INSTR_ILOAD_1:
 			// Load the value from the second variable on to the stack.
-			stack_push(sp->locals[1]);
+			if ((sf->locals != NULL) && (sf->local_count >= 1)) {
+				stack_push(sp->locals[1]);
+			} else {
+				program_error("Invalid local variable - 1");
+			}
 			break;
 		case INSTR_ILOAD_2:
 			// Load the value from the third variable on to the stack.
-			stack_push(sp->locals[2]);
+			if ((sf->locals != NULL) && (sf->local_count >= 2)) {
+				stack_push(sp->locals[2]);
+			} else {
+				program_error("Invalid local variable - 2");
+			}
 			break;
 		case INSTR_ILOAD:
 			// Load the value from the variable in the byte code on to the stack.
-			stack_push(sp->locals[BYTES_TO_INT32(&code[1])]);
+			operand1 = BYTES_TO_INT32(code, 1);
+			if ((sf->locals != NULL) && (sf->local_count >= operand1)) {
+				stack_push(sp->locals[operand1]);
+			} else {
+				program_error("Invalid local variable");
+			}
 			break;
 		case INSTR_ISTORE_0:
 			// Store the value from the stack in the first variable.
-			sp->locals[0] = stack_pop();
+			if (sf->locals != NULL) {
+				sp->locals[0] = stack_pop();
+			} else {
+				program_error("Invalid local variable - 0");
+			}
 			break;
 		case INSTR_ISTORE_1:
 			// Store the value from the stack in the second variable.
-			sp->locals[1] = stack_pop();
+			if ((sf->locals != NULL) && (sf->local_count >= 1)) {
+				sp->locals[1] = stack_pop();
+			} else {
+				program_error("Invalid local variable - 1");
+			}
 			break;
 		case INSTR_ISTORE_2:
 			// Store the value from the stack in the third variable.
-			sp->locals[2] = stack_pop();
+			if ((sf->locals != NULL) && (sf->local_count >= 2)) {
+				sp->locals[2] = stack_pop();
+			} else {
+				program_error("Invalid local variable - 2");
+			}
 			break;
 		case INSTR_ISTORE:
 			// Store the value from the stack in the variable in the byte code.
-			sp->locals[BYTES_TO_INT32(&code[1])] = stack_pop();
+			operand1 = BYTES_TO_INT32(code, 1);
+			if ((sf->locals != NULL) && (sf->local_count >= operand1)) {
+				sp->locals[operand1] = stack_pop();
+			} else {
+				program_error("Invalid local variable");
+			}
 			break;
 		case INSTR_GLOAD_0:
 			// Load the value from the first global variable on to the stack.
-			stack_push(globals.values[0]);
+			if (globals.values != NULL) {
+				stack_push(globals.values[0]);
+			} else {
+				program_error("Invalid global variable - 0");
+			}
 			break;
 		case INSTR_GLOAD_1:
 			// Load the value from the second global variable on to the stack.
-			stack_push(globals.values[1]);
+			if ((globals.values != NULL) && (globals.global_count >= 1)) {
+				stack_push(globals.values[1]);
+			} else {
+				program_error("Invalid global variable - 1");
+			}
 			break;
 		case INSTR_GLOAD_2:
 			// Load the value from the third global variable on to the stack.
-			stack_push(globals.values[2]);
+			if ((globals.values != NULL) && (globals.global_count >= 2)) {
+				stack_push(globals.values[2]);
+			} else {
+				program_error("Invalid global variable - 2");
+			}
 			break;
 		case INSTR_GLOAD:
 			// Load the value from the global variable in the byte code on to the stack.
-			stack_push(globals.values[BYTES_TO_INT32(&code[1])]);
+			operand1 = BYTES_TO_INT32(code, 1);
+			if ((globals.values != NULL) && (globals.global_count >= operand1)) {
+				stack_push(globals.values[operand1]);
+			} else {
+				program_error("Invalid global variable");
+			}
 			break;
 		case INSTR_GSTORE_0:
 			// Store the value from the stack in the first global variable.
-			globals.values[0] = stack_pop();
+			if (globals.values != NULL) {
+				globals.values[0] = stack_pop();
+			} else {
+				program_error("Invalid global variable - 0");
+			}
 			break;
 		case INSTR_GSTORE_1:
 			// Store the value from the stack in the second global variable.
-			globals.values[1] = stack_pop();
+			if ((globals.values != NULL) && (globals.global_count >= 1)) {
+				globals.values[1] = stack_pop();
+			} else {
+				program_error("Invalid global variable - 1");
+			}
 			break;
 		case INSTR_GSTORE_2:
 			// Store the value from the stack in the third global variable.
-			globals.values[2] = stack_pop();
+			if ((globals.values != NULL) && (globals.global_count >= 2)) {
+				globals.values[2] = stack_pop();
+			} else {
+				program_error("Invalid global variable - 2");
+			}
 			break;
 		case INSTR_GSTORE:
 			// Store the value from the stack in the global variable in the byte code.
-			globals.values[BYTES_TO_INT32(&code[1])] = stack_pop();
+			operand1 = BYTES_TO_INT32(code, 1);
+			if ((globals.values != NULL) && (globals.global_count >= operand1)) {
+				globals.values[operand1] = stack_pop();
+			} else {
+				program_error("Invalid global variable");
+			}
 			break;
 		case INSTR_ILT:
 			// Performs a < comparison on the topmost two values from the stack.
@@ -512,7 +592,7 @@ LOCAL void ICACHE_FLASH_ATTR vm_execute_task(os_event_t *event) {
 			break;
 		case INSTR_CALL:
 			// Calls a function. First, check the function ID is valid.
-			id = BYTES_TO_INT32(&code[1]);
+			id = BYTES_TO_INT32(code, 1);
 			if ((id < 0) || (id > program->function_count)) {
 				program_error("Invalid function ID for CALL instruction.");
 				return;
@@ -570,7 +650,7 @@ LOCAL void ICACHE_FLASH_ATTR vm_execute_task(os_event_t *event) {
 			break;
 		case INSTR_BR:
 			// Performs an unconditional branch.
-			addr = BYTES_TO_INT32(&code[1]);
+			addr = BYTES_TO_INT32(code, 1);
 			if (addr > program->functions[sp->pc.func].length) {
 				program_error("Cannot branch beyond function boundary.");
 				return;
@@ -581,7 +661,7 @@ LOCAL void ICACHE_FLASH_ATTR vm_execute_task(os_event_t *event) {
 		case INSTR_BRT:
 			// Performs a conditional branch, if the stack value is true.
 			if (stack_pop() != 0) {
-				addr = BYTES_TO_INT32(&code[1]);
+				addr = BYTES_TO_INT32(code, 1);
 				if (addr > program->functions[sp->pc.func].length) {
 					program_error("Cannot branch beyond function boundary.");
 					return;
@@ -593,7 +673,7 @@ LOCAL void ICACHE_FLASH_ATTR vm_execute_task(os_event_t *event) {
 		case INSTR_BRF:
 			// Performs a conditional branch, if the stack value is false.
 			if (stack_pop() == 0) {
-				addr = BYTES_TO_INT32(&code[1]);
+				addr = BYTES_TO_INT32(code, 1);
 				if (addr > program->functions[sp->pc.func].length) {
 					program_error("Cannot branch beyond function boundary.");
 					return;
@@ -647,7 +727,7 @@ void ICACHE_FLASH_ATTR move_pause_timer_cb(void *arg) {
  * Adds a value to the end of the stack.
  * Returns true if the value could be stored on the stack.
  */
-LOCAL inline bool stack_push(int32_t val) {
+LOCAL inline bool ICACHE_FLASH_ATTR stack_push(int32_t val) {
 	// Ensure we have a stack.
 	if (sp == NULL) {
 		os_printf("ERROR: No current stack to push to.\n");
@@ -656,7 +736,7 @@ LOCAL inline bool stack_push(int32_t val) {
 
 	// Ensure we're not going to exceed the stack's size.
 	if (sp->stack_size >= sp->max_stack_size) {
-		os_printf("ERROR: Stack overflow.\n");
+		os_printf("ERROR: Stack overflow (%d of %d).\n", sp->stack_size, sp->max_stack_size);
 		return false;
 	}
 
@@ -668,7 +748,7 @@ LOCAL inline bool stack_push(int32_t val) {
  * Removes and retrieves the newest value from the end of the stack.
  * If there are no values on the stack, a zero is returned instead.
  */
-LOCAL inline int32_t stack_pop() {
+LOCAL inline int32_t ICACHE_FLASH_ATTR stack_pop() {
 	// Ensure we have a stack.
 	if (sp == NULL) {
 		os_printf("ERROR: No current stack to pull from.\n");
@@ -682,7 +762,7 @@ LOCAL inline int32_t stack_pop() {
 	}
 
 	// Retrieve the item from the stack.
-	return sp->stack[sp->stack_size--];
+	return sp->stack[--sp->stack_size];
 }
 
 /*
@@ -692,6 +772,8 @@ LOCAL inline int32_t stack_pop() {
  */
 LOCAL stack_frame_t * ICACHE_FLASH_ATTR create_stack_frame(function_t *function) {
 	// Allocate the memory for the stack frame.
+	os_printf("Allocating stack frame with %d arguments, %d locals, %d stack.\n", 
+			function->argument_count, function->local_count, function->stack_size);
 	stack_frame_t *sf = (stack_frame_t *)os_malloc(sizeof(stack_frame_t));
 	if (sf == NULL) {
 		os_printf("Unable to allocate stack frame.\n");
@@ -731,6 +813,8 @@ LOCAL stack_frame_t * ICACHE_FLASH_ATTR create_stack_frame(function_t *function)
 	} else {
 		sf->stack = NULL;
 	}
+
+	return sf;
 }
 
 /*

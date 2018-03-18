@@ -32,6 +32,12 @@
 // Stores the address to which the results from the inverter are sent via HTTP in an ip_addr structure.
 #define REMOTE_ADDR(ip) (ip)[0] = 10; (ip)[1] = 0; (ip)[2] = 1; (ip)[3] = 253;
 
+// Debug control.
+#define DEBUG 1
+#define debug_print(fmt, ...) \
+            do { if (DEBUG) os_printf("%s:%d:%s(): " fmt, __FILE__, \
+                                __LINE__, __func__, ##__VA_ARGS__); } while (0)
+
 LOCAL const uint16_t TICK_COUNT = 100;
 LOCAL const uint16_t CODE_LEN = 1024;
 
@@ -62,14 +68,17 @@ LOCAL int skip_whitespace(int index, char *data, int max_index) {
 
 LOCAL int check_key(int *index, char *data, int max_index, int count, ...) {
 	// Ignore any leading whitespace.
+	//debug_print("Checking for %d keys.\n", count);
 	int new_index = *index;
 	new_index = skip_whitespace(new_index, data, max_index);
 	if (new_index == -1) {
+		debug_print("Check whitespace 1 failed.\n");
 		return -1;
 	}
 
 	// Keys must start with a double quotation mark.
 	if (data[new_index++] != '"') {
+		debug_print("Key must start with double quotes.\n");
 		return -1;
 	}
 
@@ -91,29 +100,34 @@ LOCAL int check_key(int *index, char *data, int max_index, int count, ...) {
 	va_end(ap);
 	if (match_index == -1) {
 		// This key doesn't match any of the supplied options.
+		debug_print("Key does not match any option.\n");
 		return -1;
 	}
 
 	// Keys must end with a double quotation mark.
 	new_index += str_len;
 	if (data[new_index++] != '"') {
+		debug_print("Key must end with double quotes.\n");
 		return -1;
 	}
 
 	// Ignore any trailing whitespace.
 	new_index = skip_whitespace(new_index, data, max_index);
 	if (new_index == -1) {
+		debug_print("Check whitespace 2 failed.\n");
 		return -1;
 	}
 
 	// Keys must be separated by a colon.
 	if (data[new_index++] != ':') {
+		debug_print("Keys must have a colon.\n");
 		return -1;
 	}
 	
 	// Ignore any whitespace after the colon.
 	new_index = skip_whitespace(new_index, data, max_index);
 	if (new_index == -1) {
+		debug_print("Check whitespace 3 failed.\n");
 		return -1;
 	}
 
@@ -164,7 +178,7 @@ void ws_recv(Websock *ws, char *data, int len, int flags) {
 	if (index == -1) {
 		return;
 	}
-	if (data[index] != '{') {
+	if (data[index++] != '{') {
 		// We must start with an object.
 		return;
 	}
@@ -181,7 +195,7 @@ void ws_recv(Websock *ws, char *data, int len, int flags) {
 	int16_t left = 0;
 	int16_t right = 0;
 	int match_index;
-	if (data[index] != '{') {
+	if (data[index++] != '{') {
 		return;
 	}
 	while (true) {
@@ -240,7 +254,7 @@ void ws_connected(Websock *ws) {
 	ws->recvCb=ws_recv;
 }
 
-LOCAL int cgiRunBytecode(HttpdConnData *connData) {
+LOCAL int ICACHE_FLASH_ATTR cgiRunBytecode(HttpdConnData *connData) {
 	// Get the bytecode.
 	char code[CODE_LEN];
 	if (httpdFindArg(connData->post->buff, "code", code, CODE_LEN) == -1) {
@@ -263,19 +277,26 @@ LOCAL int cgiRunBytecode(HttpdConnData *connData) {
 	int index = 0;
 	index = skip_whitespace(0, code, CODE_LEN);
 	if (index == -1) {
-		httpCodeReturn(connData, 400, "Bad parameter", "Invalid \"code\" parameter.");
+		httpCodeReturn(connData, 400, "Bad parameter", "Invalid \"code\" parameter preamble.");
 		return HTTPD_CGI_DONE;
 	}
-	if (code[index] != '{') {
+	if (code[index++] != '{') {
 		// We must start with an object.
-		httpCodeReturn(connData, 400, "Bad parameter", "Invalid \"code\" parameter.");
+		httpCodeReturn(connData, 400, "Bad parameter", "Invalid \"code\" parameter opening.");
 		return HTTPD_CGI_DONE;
 	}
 
 	// See if this is the program command.
 	if (check_key(&index, code, CODE_LEN, 1, "program") == -1) {
 		// Currently, only the drive command is supported, and this is not it.
-		httpCodeReturn(connData, 400, "Bad parameter", "Invalid \"code\" parameter.");
+		httpCodeReturn(connData, 400, "Bad parameter", "Invalid \"code\" parameter - not a program.");
+		return HTTPD_CGI_DONE;
+	}
+
+	if (code[index++] != '{') {
+		// All programs must be objects.
+		httpCodeReturn(connData, 400, "Bad parameter", 
+				"Invalid \"code\" parameter - program command must be an object.");
 		return HTTPD_CGI_DONE;
 	}
 	program_t *program;
@@ -315,7 +336,8 @@ LOCAL int cgiRunBytecode(HttpdConnData *connData) {
 				} break;
 			default:
 				// Unknown property.
-				httpCodeReturn(connData, 400, "Bad parameter", "Invalid \"code\" parameter.");
+				httpCodeReturn(connData, 400, "Bad parameter", 
+						"Invalid \"code\" parameter - unknown program field.");
 				return HTTPD_CGI_DONE;
 		}
 		if (code[index] == ',') {
@@ -328,18 +350,21 @@ LOCAL int cgiRunBytecode(HttpdConnData *connData) {
 	}
 
 	if ((!have_globals) || (!have_functions)) {
-		httpCodeReturn(connData, 400, "Bad parameter", "Invalid \"code\" parameter.");
+		httpCodeReturn(connData, 400, "Bad parameter", 
+				"Invalid \"code\" parameter, missing globals or functions.");
 		return HTTPD_CGI_DONE;
 	}
 
 	// We now have a valid program structure, start execution of the program.
 	run_program(program);
+	httpCodeReturn(connData, 200, "OK", "OK");
 	return HTTPD_CGI_DONE;
 }
 
 LOCAL int ICACHE_FLASH_ATTR parse_functions(
 	int *index, char *data, int max_index, program_t *program, HttpdConnData *connData) {
 	// Functions must reside in an array, see how many there are.
+	debug_print("Entering function parsing at index %d.\n", *index);
 	if (data[*index] != '[') {
 		httpCodeReturn(connData, 400, "Bad parameter", 
 				"Non-array for functions in \"code\" parameter.");
@@ -375,7 +400,7 @@ LOCAL int ICACHE_FLASH_ATTR parse_functions(
 	program->functions = (function_t *)os_malloc(function_count * sizeof(function_t));
 	if (program->functions == NULL) {
 		httpCodeReturn(connData, 500, "Internal error", 
-				"Unable to allocate memory to process program.");
+				"Unable to allocate memory to process program function.");
 		return -1;
 	}
 
@@ -386,7 +411,7 @@ LOCAL int ICACHE_FLASH_ATTR parse_functions(
 
 		if (data[*index] != '{') {
 			httpCodeReturn(connData, 400, "Bad parameter",
-					"Invalid \"code\" parameter.");
+					"Invalid \"code\" parameter - function object.");
 			return -1;
 		}
 		(*index)++;
@@ -435,7 +460,7 @@ LOCAL int ICACHE_FLASH_ATTR parse_functions(
 							if (!in_number) {
 								// This is an invalid array.
 								httpCodeReturn(connData, 400, "Bad parameter",
-										"Bytecode for functions must be in a valid array.");
+										"Bytecode for functions must not hold empty numbers.");
 								return -1;
 							}
 							in_number = false;
@@ -459,7 +484,7 @@ LOCAL int ICACHE_FLASH_ATTR parse_functions(
 					program->functions[ii].code = (uint8_t *)os_malloc(len);
 					if (program->functions[ii].code == NULL) {
 						httpCodeReturn(connData, 500, "Internal error", 
-								"Unable to allocate memory to process program.");
+								"Unable to allocate memory to process program funtion's code.");
 						return -1;
 					}
 					for (int jj = 0; jj < len; jj++) {
@@ -473,7 +498,7 @@ LOCAL int ICACHE_FLASH_ATTR parse_functions(
 					} break;
 				default:
 					httpCodeReturn(connData, 400, "Bad parameter",
-							"Invalid \"code\" parameter.");
+							"Invalid \"code\" parameter - unknown function field.");
 					return -1;
 			}
 			if (data[*index] == ',') {
@@ -615,6 +640,9 @@ void user_init(void) {
 	// Initialise the stepper and servo motors.
 	gpio_init();
 	init_motors();
+
+	// Initialise the virtual machine.
+	init_vm();
 
 	// Initialise the HTTP server.
 	espFsInit((void*)(webpages_espfs_start));

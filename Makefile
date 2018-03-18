@@ -16,7 +16,7 @@
 PROJ_NAME ?= microturtle
 
 # hostname or IP address for OTA flashing
-ESP_HOSTNAME ?= 10.0.1.18
+ESP_HOSTNAME ?= 10.0.1.38
 
 # --------------- toolchain configuration ---------------
 
@@ -47,8 +47,8 @@ BOOTFILE	?= $(SDK_BASE/bin/boot_v1.5.bin)
 # Typically you'll use https://github.com/themadinventor/esptool
 # Windows users use the com port i.e: ESPPORT ?= com3
 ESPTOOL		?= ~/ESP8266/esp-open-sdk/esptool/esptool.py
-ESPPORT		?= /dev/ttyUSB0
-ESPBAUD		?= 460800
+ESPPORT		?= /dev/ttyS3
+ESPBAUD		?= 115200
 
 # --------------- chipset configuration   ---------------
 

@@ -532,7 +532,6 @@ function LogoRefs(scopes, exceptions) {
 };
 LogoRefs.prototype = Object.create(logoListener.prototype);
 LogoRefs.prototype.constructor = LogoRefs;
-// TODO: Fill me in.
 LogoRefs.prototype.incrementStack = function(ctx, boost=0) {
 	this._currentScope.incrementStack(1, boost);
 };
@@ -577,7 +576,12 @@ LogoRefs.prototype.enterProcedureInvoke = function(ctx) {
                 message: "Incorrect parameter count for procedure \"" + name +
                 "\", " + ctx.expr().length + " instead of " + proc.paramCount + 
                 "."});
-    } else {
+	}
+};
+LogoRefs.prototype.exitProcedureInvoke = function(ctx) {
+    var name = ctx.STRING().getText();
+    var proc = this._currentScope.resolveProcedure(name);
+	if (proc !== undefined) {
 		// Update the stack count.
 		this.decrementStack(ctx, proc.paramCount);
 	}
@@ -696,22 +700,41 @@ LogoAssembler.prototype.enterRepeat = function(ctx) {
 LogoAssembler.prototype.exitRepeat = function(ctx) {
     var segments = this._frames.pop();
     if (segments.length > 0) {
+		// Store the stack value (number of repetitions) in a temporary variable.
         var name = this._currentScope.nameAnonymousVariable(this._repeatDepth,
                 0);
         var var1 = this._currentScope.resolveLocalVariable(name);
         this._asm.instrIStore(var1.index);
+
+		// Store the current index (0) in a second temporary variable.
         this._asm.instrIConst(0);
         name = this._currentScope.nameAnonymousVariable(this._repeatDepth, 1);
         var var2 = this._currentScope.resolveLocalVariable(name);
         this._asm.instrIStore(var2.index);
+
+		// Create the label for the start of the repeat section.
         var labelBase = this.getNextLabelBase("repeat");
         this._asm.label(labelBase + "-start");
+
+		// Compare the index with the repetition count, and finish we're done.
         this._asm.instrILoad(var2.index);
         this._asm.instrILoad(var1.index);
         this._asm.instrIGe();
         this._asm.instrBrt(labelBase + "-end");
+
+		// Include the code for the loop's body.
         this._asm.insertSegment(segments[0]);
+		
+		// Increment the current index.
+		this._asm.instrILoad(var2.index);
+		this._asm.instrIConst(1);
+		this._asm.instrIAdd();
+		this._asm.instrIStore(var2.index);
+
+		// Loop back to the start, where we'll check the index again.
         this._asm.instrBr(labelBase + "-start");
+
+		// Place the end label for when the loop's finished.
         this._asm.label(labelBase + "-end");
     }
 
@@ -1112,10 +1135,10 @@ AsmCompiler.prototype.exitProgram = function(ctx) {
                     message: "Unknown function: \"" + item.name + "\"."});
         } else {
             // Update this function call.
-            item.codes[item.index]   = (labelIndex & 0xFF000000) >> 24;
-            item.codes[item.index+1] = (labelIndex & 0x00FF0000) >> 16;
-            item.codes[item.index+2] = (labelIndex & 0x0000FF00) >> 8;
-            item.codes[item.index+3] = (labelIndex & 0x000000FF);
+            item.codes[item.index]   = (fnInfo.id & 0xFF000000) >> 24;
+            item.codes[item.index+1] = (fnInfo.id & 0x00FF0000) >> 16;
+            item.codes[item.index+2] = (fnInfo.id & 0x0000FF00) >> 8;
+            item.codes[item.index+3] = (fnInfo.id & 0x000000FF);
         }
     }
 

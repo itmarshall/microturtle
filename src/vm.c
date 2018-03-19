@@ -224,8 +224,7 @@ bool ICACHE_FLASH_ATTR run_program(program_t *prog) {
 
 	// Initialise the globals.
 	globals.global_count = prog->global_count;
-	if (globals.values > 0) {
-		os_printf("Allocating %d global variables.\n", globals.global_count);
+	if (globals.global_count > 0) {
 		globals.values = (int32_t *)os_malloc(globals.global_count * sizeof(int32_t));
 		if (globals.values == NULL) {
 			os_printf("Unable to allocate global memory.\n");
@@ -336,7 +335,7 @@ LOCAL void ICACHE_FLASH_ATTR vm_execute_task(os_event_t *event) {
 	uint32_t addr;
 	stack_frame_t *sf;
 	int32_t id;
-	uint32_t ii;
+	int32_t ii;
 
 	// Execute the code instruction.
 	bool auto_update_pc = true;
@@ -346,6 +345,7 @@ LOCAL void ICACHE_FLASH_ATTR vm_execute_task(os_event_t *event) {
 			// Move forward by the amount at the end of the stack.
 			operand1 = stack_pop();
 			// TODO: Add scale factors
+			os_printf("Moving forward by %d steps.\n", operand1);
 			drive_motors(operand1, operand1, operand1, end_move_pause);
 			defer_next_instr = true;
 			break;
@@ -353,6 +353,7 @@ LOCAL void ICACHE_FLASH_ATTR vm_execute_task(os_event_t *event) {
 			// Move backwards by the amount at the end of the stack.
 			operand1 = stack_pop();
 			// TODO: Add scale factors
+			os_printf("Moving backward by %d steps.\n", operand1);
 			drive_motors(-1 * operand1, -1 * operand1, operand1, end_move_pause);
 			defer_next_instr = true;
 			break;
@@ -360,6 +361,7 @@ LOCAL void ICACHE_FLASH_ATTR vm_execute_task(os_event_t *event) {
 			// Turn left by the number of degrees at the end of the stack.
 			operand1 = stack_pop();
 			// TODO: Add scale factors
+			os_printf("Turning left by %d steps.\n", operand1);
 			drive_motors(-1 * operand1, operand1, operand1, end_move_pause);
 			defer_next_instr = true;
 			break;
@@ -367,6 +369,7 @@ LOCAL void ICACHE_FLASH_ATTR vm_execute_task(os_event_t *event) {
 			// Turn right by the number of degrees at the end of the stack.
 			operand1 = stack_pop();
 			// TODO: Add scale factors
+			os_printf("Turning right by %d steps.\n", operand1);
 			drive_motors(operand1, -1 * operand1, operand1, end_move_pause);
 			defer_next_instr = true;
 			break;
@@ -424,7 +427,7 @@ LOCAL void ICACHE_FLASH_ATTR vm_execute_task(os_event_t *event) {
 			break;
 		case INSTR_ILOAD_0:
 			// Load the value from the first variable on to the stack.
-			if (sf->locals != NULL) {
+			if (sp->locals != NULL) {
 				stack_push(sp->locals[0]);
 			} else {
 				program_error("Invalid local variable - 0");
@@ -432,7 +435,7 @@ LOCAL void ICACHE_FLASH_ATTR vm_execute_task(os_event_t *event) {
 			break;
 		case INSTR_ILOAD_1:
 			// Load the value from the second variable on to the stack.
-			if ((sf->locals != NULL) && (sf->local_count >= 1)) {
+			if ((sp->locals != NULL) && (sp->local_count >= 1)) {
 				stack_push(sp->locals[1]);
 			} else {
 				program_error("Invalid local variable - 1");
@@ -440,7 +443,7 @@ LOCAL void ICACHE_FLASH_ATTR vm_execute_task(os_event_t *event) {
 			break;
 		case INSTR_ILOAD_2:
 			// Load the value from the third variable on to the stack.
-			if ((sf->locals != NULL) && (sf->local_count >= 2)) {
+			if ((sp->locals != NULL) && (sp->local_count >= 2)) {
 				stack_push(sp->locals[2]);
 			} else {
 				program_error("Invalid local variable - 2");
@@ -449,7 +452,7 @@ LOCAL void ICACHE_FLASH_ATTR vm_execute_task(os_event_t *event) {
 		case INSTR_ILOAD:
 			// Load the value from the variable in the byte code on to the stack.
 			operand1 = BYTES_TO_INT32(code, 1);
-			if ((sf->locals != NULL) && (sf->local_count >= operand1)) {
+			if ((sp->locals != NULL) && (sp->local_count >= operand1)) {
 				stack_push(sp->locals[operand1]);
 			} else {
 				program_error("Invalid local variable");
@@ -457,7 +460,7 @@ LOCAL void ICACHE_FLASH_ATTR vm_execute_task(os_event_t *event) {
 			break;
 		case INSTR_ISTORE_0:
 			// Store the value from the stack in the first variable.
-			if (sf->locals != NULL) {
+			if (sp->locals != NULL) {
 				sp->locals[0] = stack_pop();
 			} else {
 				program_error("Invalid local variable - 0");
@@ -465,7 +468,7 @@ LOCAL void ICACHE_FLASH_ATTR vm_execute_task(os_event_t *event) {
 			break;
 		case INSTR_ISTORE_1:
 			// Store the value from the stack in the second variable.
-			if ((sf->locals != NULL) && (sf->local_count >= 1)) {
+			if ((sp->locals != NULL) && (sp->local_count >= 1)) {
 				sp->locals[1] = stack_pop();
 			} else {
 				program_error("Invalid local variable - 1");
@@ -473,7 +476,7 @@ LOCAL void ICACHE_FLASH_ATTR vm_execute_task(os_event_t *event) {
 			break;
 		case INSTR_ISTORE_2:
 			// Store the value from the stack in the third variable.
-			if ((sf->locals != NULL) && (sf->local_count >= 2)) {
+			if ((sp->locals != NULL) && (sp->local_count >= 2)) {
 				sp->locals[2] = stack_pop();
 			} else {
 				program_error("Invalid local variable - 2");
@@ -482,7 +485,7 @@ LOCAL void ICACHE_FLASH_ATTR vm_execute_task(os_event_t *event) {
 		case INSTR_ISTORE:
 			// Store the value from the stack in the variable in the byte code.
 			operand1 = BYTES_TO_INT32(code, 1);
-			if ((sf->locals != NULL) && (sf->local_count >= operand1)) {
+			if ((sp->locals != NULL) && (sp->local_count >= operand1)) {
 				sp->locals[operand1] = stack_pop();
 			} else {
 				program_error("Invalid local variable");
@@ -593,10 +596,12 @@ LOCAL void ICACHE_FLASH_ATTR vm_execute_task(os_event_t *event) {
 		case INSTR_CALL:
 			// Calls a function. First, check the function ID is valid.
 			id = BYTES_TO_INT32(code, 1);
-			if ((id < 0) || (id > program->function_count)) {
-				program_error("Invalid function ID for CALL instruction.");
+			if ((id <= 0) || (id >= program->function_count)) {
+				program_error("Invalid function ID for CALL instruction.\n");
 				return;
 			}
+			os_printf("Calling to function %d with %d arguments and %d stack.\n",
+					id, program->functions[id].argument_count, program->functions[id].stack_size);
 
 			// Update this stack frame's program counter to the instruction to be called upon 
 			// returning from this call.
@@ -611,7 +616,7 @@ LOCAL void ICACHE_FLASH_ATTR vm_execute_task(os_event_t *event) {
 			}
 
 			// Copy any parameters to the new stack frame's local variables.
-			for (ii = program->functions[id].argument_count - 1; ii >= 0; ii++) {
+			for (ii = program->functions[id].argument_count - 1; ii >= 0; ii--) {
 				sf->locals[ii] = stack_pop();
 			}
 
@@ -625,7 +630,7 @@ LOCAL void ICACHE_FLASH_ATTR vm_execute_task(os_event_t *event) {
 			// Ends the execution of a function.
 			// Move to the previous stack frame.
 			sf = sp;
-			if (sp->prev != NULL) {
+			if (sp->prev == NULL) {
 				program_error("Attempt to RETurn from <main> function.");
 				return;
 			}
@@ -694,7 +699,9 @@ LOCAL void ICACHE_FLASH_ATTR vm_execute_task(os_event_t *event) {
 	}
 	if (defer_next_instr == false) {
 		// Run the next instruction.
+		// TODO: Reinstate and remove the instruction pause.
 		execute_instruction();
+		//end_move_pause();
 	}
 }
 

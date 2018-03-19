@@ -1,0 +1,87 @@
+<html>
+<head>
+    <title>Logo test</title>
+    <style type="text/css" media="screen">
+        .ace_editor {
+            border: 1px solid lightgrey;
+            margin: auto;
+            height: 200px;
+            width: 80%;
+        }
+        .editor { 
+            position: absolute;
+            top: 0;
+            right: 0;
+            bottom: 0;
+            left: 0;
+        }
+    </style>
+    <!--<script type="text/javascript" src="pack/dist/logo-bundle.js"></script>-->
+    <script type="text/javascript" src="logo-pack/dist/logo.js"></script>
+
+</head>
+<body>
+    <pre id="editor">
+; Welcome!
+fd 10
+rt 90
+pu fd 100 pendown
+repeat 6 [ fd 1 rt 10 repeat 2 [ fd 2 lt 2 ] ]
+make "n 3
+repeat :n [ flurgle 3 7 make "n :n - 1 ]
+bk 88
+
+; Do something flurgly.
+to flurgle :bean :bar
+  fd 22
+  if ((:bean > 0) And (:bean < 10))
+  [
+      ; Now repeat flurgles.
+      repeat (:bean + 2) * (:bean - 1) + 1 * 2 - 3 / 4 [
+        fd 10
+        rt 12
+      ]
+  ]
+  else
+  [
+      BK 10 Lt :bean
+  ]
+end
+    </pre>
+    <br>
+    <a href="javascript:parseLogo()">Parse</a>
+    <script src="ace.js" type="text/javascript" charset="utf-8"></script>
+	<script src="logo-mode.js" type="text/javascript" charset="utf-8"></script>
+    <script>
+        var editor = ace.edit("editor");
+        //editor.setTheme("ace/theme/chrome");
+        editor.setTheme("ace/theme/xcode");
+        editor.setAutoScrollEditorIntoView(true);
+        editor.setOption("minLines", 10);
+        editor.setOption("maxLines", 100);
+        editor.getSession().setTabSize(4);
+        editor.getSession().setUseSoftTabs(false);
+        editor.setShowPrintMargin(false);
+        editor.setDisplayIndentGuides(false);
+        //editor.session.setMode("ace/mode/javascript");
+		//editor.getSession().setMode("ace/mode/logo-mode");
+
+        function parseLogo() {
+            // Compile the program to byte code.
+            var results = logo.compileProgram();
+
+            if (results.success) {
+                // Print out the compiled bytecode.
+                console.log(JSON.stringify(results.bytecode));
+            } else {
+                // Something was wrong, print out the errors.
+                console.log("Exceptions found:");
+                for (var ii = 0; ii < results.exceptions.length; ii++) {
+                    var e = results.exceptions[ii];
+                    console.log("line " + e.line + ":" + e.col + " " + e.message);
+                }
+            }
+        }
+    </script>
+</body>
+</html>

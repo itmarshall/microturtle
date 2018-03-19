@@ -68,7 +68,6 @@ LOCAL int skip_whitespace(int index, char *data, int max_index) {
 
 LOCAL int check_key(int *index, char *data, int max_index, int count, ...) {
 	// Ignore any leading whitespace.
-	//debug_print("Checking for %d keys.\n", count);
 	int new_index = *index;
 	new_index = skip_whitespace(new_index, data, max_index);
 	if (new_index == -1) {
@@ -364,7 +363,6 @@ LOCAL int ICACHE_FLASH_ATTR cgiRunBytecode(HttpdConnData *connData) {
 LOCAL int ICACHE_FLASH_ATTR parse_functions(
 	int *index, char *data, int max_index, program_t *program, HttpdConnData *connData) {
 	// Functions must reside in an array, see how many there are.
-	debug_print("Entering function parsing at index %d.\n", *index);
 	if (data[*index] != '[') {
 		httpCodeReturn(connData, 400, "Bad parameter", 
 				"Non-array for functions in \"code\" parameter.");
@@ -380,7 +378,7 @@ LOCAL int ICACHE_FLASH_ATTR parse_functions(
 			if (bracket_depth == 0) {
 				break;
 			}
-		} else if (data[ii] == ']') {
+		} else if (data[ii] == '[') {
 			bracket_depth++;
 		} else if (data[ii] == '{') {
 			if (brace_depth == 0) {
@@ -537,6 +535,13 @@ LOCAL int ICACHE_FLASH_ATTR parse_functions(
 
 		// Skip any trailing whitespace.
 		*index = skip_whitespace(*index, data, max_index);
+
+		// TODO: Debug code.
+		/*
+		debug_print("Function %d: argc=%d, locals=%d, stack=%d.\n",
+				ii, program->functions[ii].argument_count, program->functions[ii].local_count, program->functions[ii].stack_size); 
+		os_delay_us(2000);
+		*/
 	}
 
 	// If we get here, all is good.

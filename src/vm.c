@@ -10,6 +10,7 @@
 #include "mem.h"
 
 #include "vm.h"
+#include "config.h"
 #include "motors.h"
 
 // Helper macro to convert 4 bytes from an array into a 32-bit integer.
@@ -17,6 +18,9 @@
                                   ((arr)[(idx) + 1] << 16) + \
 								  ((arr)[(idx) + 2] << 8) + \
 								  ((arr)[(idx) + 3]))
+
+// Helper macro to choose the maximum of two numbers.
+#define MAX(x, y) ((x) > (y)) ? (x) : (y)
 
 // The maximum number of variables in a function or globals.
 #define MAX_VAR_COUNT 32
@@ -332,6 +336,8 @@ LOCAL void ICACHE_FLASH_ATTR vm_execute_task(os_event_t *event) {
 	// Define variables for use within the below switch block.
 	int32_t operand1;
 	int32_t operand2;
+	uint32_t left_scale;
+	uint32_t right_scale;
 	uint32_t addr;
 	stack_frame_t *sf;
 	int32_t id;
@@ -344,33 +350,41 @@ LOCAL void ICACHE_FLASH_ATTR vm_execute_task(os_event_t *event) {
 		case INSTR_FD:
 			// Move forward by the amount at the end of the stack.
 			operand1 = stack_pop();
-			// TODO: Add scale factors
-			os_printf("Moving forward by %d steps.\n", operand1);
-			drive_motors(operand1, operand1, operand1, end_move_pause);
+			get_straight_steps(&left_scale, &right_scale);
+			operand2 = operand1 * right_scale / 100; 
+			operand1 = operand1 * left_scale  / 100;
+			os_printf("Moving forward by %d, %d steps.\n", operand1, operand2);
+			drive_motors(operand1, operand1, MAX(operand1, operand2), end_move_pause);
 			defer_next_instr = true;
 			break;
 		case INSTR_BK:
 			// Move backwards by the amount at the end of the stack.
 			operand1 = stack_pop();
-			// TODO: Add scale factors
-			os_printf("Moving backward by %d steps.\n", operand1);
-			drive_motors(-1 * operand1, -1 * operand1, operand1, end_move_pause);
+			get_straight_steps(&left_scale, &right_scale);
+			operand2 = operand1 * right_scale / 100; 
+			operand1 = operand1 * left_scale  / 100;
+			os_printf("Moving backward by %d, %d steps.\n", operand1, operand2);
+			drive_motors(-1 * operand1, -1 * operand1, MAX(operand1, operand2), end_move_pause);
 			defer_next_instr = true;
 			break;
 		case INSTR_LT:
 			// Turn left by the number of degrees at the end of the stack.
 			operand1 = stack_pop();
-			// TODO: Add scale factors
-			os_printf("Turning left by %d steps.\n", operand1);
-			drive_motors(-1 * operand1, operand1, operand1, end_move_pause);
+			get_turn_steps(&left_scale, &right_scale);
+			operand2 = operand1 * right_scale / 90; 
+			operand1 = operand1 * left_scale  / 90;
+			os_printf("Turning left by %d, %d steps.\n", operand1, operand2);
+			drive_motors(-1 * operand1, operand2, MAX(operand1, operand2), end_move_pause);
 			defer_next_instr = true;
 			break;
 		case INSTR_RT:
 			// Turn right by the number of degrees at the end of the stack.
 			operand1 = stack_pop();
-			// TODO: Add scale factors
-			os_printf("Turning right by %d steps.\n", operand1);
-			drive_motors(operand1, -1 * operand1, operand1, end_move_pause);
+			get_turn_steps(&left_scale, &right_scale);
+			operand2 = operand1 * right_scale / 90; 
+			operand1 = operand1 * left_scale  / 90;
+			os_printf("Turning right by %d, %d steps.\n", operand1, operand2);
+			drive_motors(operand1, -1 * operand2, MAX(operand1, operand2), end_move_pause);
 			defer_next_instr = true;
 			break;
 		case INSTR_PU:
@@ -699,9 +713,7 @@ LOCAL void ICACHE_FLASH_ATTR vm_execute_task(os_event_t *event) {
 	}
 	if (defer_next_instr == false) {
 		// Run the next instruction.
-		// TODO: Reinstate and remove the instruction pause.
 		execute_instruction();
-		//end_move_pause();
 	}
 }
 

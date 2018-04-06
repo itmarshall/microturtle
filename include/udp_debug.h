@@ -19,6 +19,11 @@
 // Stores the address to which debug packets are sent in an ip_addr structure.
 #define DBG_ADDR(ip) (ip)[0] = 10; (ip)[1] = 0; (ip)[2] = 1; (ip)[3] = 253;
 
+// Allows for debugging of messages only when a DEBUG flag is set.
+#define debug_print(fmt, ...) \
+	do { if (DEBUG) os_printf("%s:%d:%s(): " fmt, __FILE__, \
+			__LINE__, __func__, ##__VA_ARGS__); } while (0)
+
 /*
  * Performs the required initialisation to pass debug information through the network.
  */

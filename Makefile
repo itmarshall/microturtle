@@ -125,7 +125,7 @@ TARGET		= $(PROJ_NAME)
 # espressif tool to concatenate sections for OTA upload using bootloader v1.2+
 APPGEN_TOOL	?= gen_appbin.py
 
-CFLAGS=
+CFLAGS=-DDEBUG=1
 
 # set defines for optional modules
 ifneq (,$(findstring mqtt,$(MODULES)))

@@ -26,17 +26,12 @@
 #include "tcp_ota.h"
 #include "udp_debug.h"
 #include "string_builder.h"
+#include "config.h"
 #include "motors.h"
 #include "vm.h"
 
 // Stores the address to which the results from the inverter are sent via HTTP in an ip_addr structure.
 #define REMOTE_ADDR(ip) (ip)[0] = 10; (ip)[1] = 0; (ip)[2] = 1; (ip)[3] = 253;
-
-// Debug control.
-#define DEBUG 1
-#define debug_print(fmt, ...) \
-            do { if (DEBUG) os_printf("%s:%d:%s(): " fmt, __FILE__, \
-                                __LINE__, __func__, ##__VA_ARGS__); } while (0)
 
 LOCAL const uint16_t TICK_COUNT = 100;
 LOCAL const uint16_t CODE_LEN = 1024;
@@ -360,6 +355,162 @@ LOCAL int ICACHE_FLASH_ATTR cgiRunBytecode(HttpdConnData *connData) {
 	return HTTPD_CGI_DONE;
 }
 
+/*
+ * Draws a line for calibration purposes.
+ */
+LOCAL int ICACHE_FLASH_ATTR cgiCalibrateLine(HttpdConnData *connData) {
+	if (connData == NULL) {
+		return HTTPD_CGI_DONE;
+	}
+
+	// Get the parameters.
+	char l_buf[12];
+	char r_buf[12];
+	if (httpdFindArg(connData->post->buff, "left", l_buf, 12) == -1) {
+		httpCodeReturn(connData, 400, "Missing parameter", "Missing the \"left\" parameter.");
+		return HTTPD_CGI_DONE;
+	}
+	if (httpdFindArg(connData->post->buff, "right", r_buf, 12) == -1) {
+		httpCodeReturn(connData, 400, "Missing parameter", "Missing the \"right\" parameter.");
+		return HTTPD_CGI_DONE;
+	}
+	uint32_t left = atoi(l_buf);
+	uint32_t right = atoi(r_buf);
+
+	// Create the program to draw the line.
+	program_t *program;
+	program = (program_t *)os_malloc(sizeof(program_t));
+	if (program == NULL) {
+		httpCodeReturn(connData, 500, "Internal error", 
+				"Unable to allocate memory to process calibration request.");
+		return HTTPD_CGI_DONE;
+	}
+	program->global_count = 0;
+	program->function_count = 1;
+	program->functions = (function_t *)os_malloc(sizeof(function_t));
+	if (program->functions == NULL) {
+		os_free(program);
+		httpCodeReturn(connData, 500, "Internal error", 
+				"Unable to allocate memory to process calibration request.");
+		return HTTPD_CGI_DONE;
+	}
+	program->functions[0].id = 0;
+	program->functions[0].argument_count = 0;
+	program->functions[0].local_count = 0;
+	program->functions[0].stack_size = 2;
+	program->functions[0].length = 13;
+	program->functions[0].code = (uint8_t *)os_malloc(13);
+	if (program->functions[0].code == NULL) {
+		os_free(program->functions);
+		os_free(program);
+		httpCodeReturn(connData, 500, "Internal error", 
+				"Unable to allocate memory to process calibration request.");
+		return HTTPD_CGI_DONE;
+	}
+	program->functions[0].code[0] = 6;   // PD
+	program->functions[0].code[1] = 15;  // IConst (left)
+	*(uint32_t *)(&program->functions[0].code[2]) = left;
+	program->functions[0].code[6] = 15;  // IConst (right)
+	*(uint32_t *)(&program->functions[0].code[7]) = right;
+	program->functions[0].code[11] = 44; // FDRAW
+	program->functions[0].code[12] = 7;  // PU
+
+	// Begin the line sequence.
+	run_program(program);
+	httpCodeReturn(connData, 200, "OK", "OK");
+	return HTTPD_CGI_DONE;
+}
+
+/*
+ * Draws two lines at a 180° angle for calibration purposes.
+ */
+LOCAL int ICACHE_FLASH_ATTR cgiCalibrateTurn(HttpdConnData *connData) {
+	if (connData == NULL) {
+		return HTTPD_CGI_DONE;
+	}
+
+	// Get the parameters.
+	char l_buf[12];
+	char r_buf[12];
+	if (httpdFindArg(connData->post->buff, "left", l_buf, 12) == -1) {
+		httpCodeReturn(connData, 400, "Missing parameter", "Missing the \"left\" parameter.");
+		return HTTPD_CGI_DONE;
+	}
+	if (httpdFindArg(connData->post->buff, "right", r_buf, 12) == -1) {
+		httpCodeReturn(connData, 400, "Missing parameter", "Missing the \"right\" parameter.");
+		return HTTPD_CGI_DONE;
+	}
+	uint32_t left = atoi(l_buf);
+	uint32_t right = atoi(r_buf);
+	if (httpdFindArg(connData->post->buff, "leftStraight", l_buf, 12) == -1) {
+		httpCodeReturn(connData, 400, "Missing parameter", "Missing the \"leftStraight\" parameter.");
+		return HTTPD_CGI_DONE;
+	}
+	if (httpdFindArg(connData->post->buff, "rightStraight", r_buf, 12) == -1) {
+		httpCodeReturn(connData, 400, "Missing parameter", "Missing the \"rightStraight\" parameter.");
+		return HTTPD_CGI_DONE;
+	}
+	uint32_t leftStraight = atoi(l_buf);
+	uint32_t rightStraight = atoi(r_buf);
+
+	// Create the program to draw the lines.
+	program_t *program;
+	program = (program_t *)os_malloc(sizeof(program_t));
+	if (program == NULL) {
+		httpCodeReturn(connData, 500, "Internal error", 
+				"Unable to allocate memory to process calibration request.");
+		return HTTPD_CGI_DONE;
+	}
+	program->global_count = 0;
+	program->function_count = 1;
+	program->functions = (function_t *)os_malloc(sizeof(function_t));
+	if (program->functions == NULL) {
+		os_free(program);
+		httpCodeReturn(connData, 500, "Internal error", 
+				"Unable to allocate memory to process calibration request.");
+		return HTTPD_CGI_DONE;
+	}
+	program->functions[0].id = 0;
+	program->functions[0].argument_count = 0;
+	program->functions[0].local_count = 0;
+	program->functions[0].stack_size = 2;
+	program->functions[0].length = 32;
+	program->functions[0].code = (uint8_t *)os_malloc(32);
+	if (program->functions[0].code == NULL) {
+		os_free(program->functions);
+		os_free(program);
+		httpCodeReturn(connData, 500, "Internal error", 
+				"Unable to allocate memory to process calibration request.");
+		return HTTPD_CGI_DONE;
+	}
+	program->functions[0].code[0] = 6;   // PD
+
+	program->functions[0].code[1] = 15;  // IConst (left straight)
+	*(uint32_t *)(&program->functions[0].code[2]) = leftStraight;
+	program->functions[0].code[6] = 15;  // IConst (right straight)
+	*(uint32_t *)(&program->functions[0].code[7]) = rightStraight;
+	program->functions[0].code[11] = 44; // FDRAW
+
+	program->functions[0].code[12] = 15;  // IConst (left)
+	*(uint32_t *)(&program->functions[0].code[13]) = left;
+	program->functions[0].code[14] = 15;  // IConst (right)
+	*(uint32_t *)(&program->functions[0].code[15]) = right;
+	program->functions[0].code[19] = 47; // RTRAW
+
+	program->functions[0].code[20] = 15;  // IConst (left straight)
+	*(uint32_t *)(&program->functions[0].code[21]) = leftStraight / 2;
+	program->functions[0].code[25] = 15;  // IConst (right straight)
+	*(uint32_t *)(&program->functions[0].code[26]) = rightStraight / 2;
+	program->functions[0].code[30] = 44; // FDRAW
+
+	program->functions[0].code[31] = 7;  // PU
+
+	// Begin the line sequence.
+	run_program(program);
+	httpCodeReturn(connData, 200, "OK", "OK");
+	return HTTPD_CGI_DONE;
+}
+
 LOCAL int ICACHE_FLASH_ATTR parse_functions(
 	int *index, char *data, int max_index, program_t *program, HttpdConnData *connData) {
 	// Functions must reside in an array, see how many there are.
@@ -562,6 +713,35 @@ LOCAL void ICACHE_FLASH_ATTR httpCodeReturn(HttpdConnData *connData, uint16_t co
 	httpdSend(connData, "</p></body></html>", -1);
 }
 
+LOCAL int ICACHE_FLASH_ATTR tpl_set_configuration(HttpdConnData *connData, char *token, void **arg) {
+	if (token == NULL) {
+		// The call has been cancelled.
+		return HTTPD_CGI_DONE;
+	}
+
+	// Get the configuration.
+	config_t config;
+	get_configuration(&config);
+
+	// Store the configuration value in the buffer.
+	char buf[12];
+	if (os_strcmp(token, "straightStepsLeft") == 0) {
+		os_sprintf(buf, "%d", config.straight_steps_left);
+	} else if (os_strcmp(token, "straightStepsRight") == 0) {
+		os_sprintf(buf, "%d", config.straight_steps_right);
+	} else if (os_strcmp(token, "turnStepsLeft") == 0) {
+		os_sprintf(buf, "%d", config.turn_steps_left);
+	} else if (os_strcmp(token, "turnStepsRight") == 0) {
+		os_sprintf(buf, "%d", config.turn_steps_right);
+	} else {
+		return HTTPD_CGI_DONE;
+	}
+
+	// Send the buffer's contents to fill in the token.
+	httpdSend(connData, buf, -1);
+	return HTTPD_CGI_DONE;
+}
+
 /*
  * Call-back for when we have an event from the wireless internet connection.
  */
@@ -625,6 +805,9 @@ HttpdBuiltInUrl builtInUrls[]={
 	{"/", cgiRedirect, "/welcome.html"},
 	{"/runBytecode.cgi", cgiRunBytecode, NULL},
 	{"/ws.cgi", cgiWebsocket, ws_connected},
+	{"/calibrate/calibrate.tpl", cgiEspFsTemplate, tpl_set_configuration},
+	{"/calibrate/drawLine.cgi", cgiCalibrateLine, NULL},
+	{"/calibrate/drawTurn.cgi", cgiCalibrateTurn, NULL},
 	{"*", cgiEspFsHook, NULL}, //Catch-all cgi function for the filesystem
 	{NULL, NULL, NULL}
 };

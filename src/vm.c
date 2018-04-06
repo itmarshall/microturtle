@@ -8,7 +8,10 @@
 #include "ets_sys.h"
 #include "osapi.h"
 #include "mem.h"
+#include "cgiwebsocket.h"
 
+#include "udp_debug.h"
+#include "string_builder.h"
 #include "vm.h"
 #include "config.h"
 #include "motors.h"
@@ -89,6 +92,10 @@
 #define INSTR_BR        41
 #define INSTR_BRT       42
 #define INSTR_BRF       43
+#define INSTR_FDRAW     44
+#define INSTR_BKRAW     45
+#define INSTR_LTRAW     46
+#define INSTR_RTRAW     47
 
 // The lengths of each instruction in bytes, including the instruction itself.
 const uint8_t INSTR_LEN[] = {
@@ -296,6 +303,10 @@ void ICACHE_FLASH_ATTR stop_program() {
 
 	// Call to execute the next instruction, which will safely free the memory.
 	execute_instruction();
+
+	// Send a message to the web socket.
+	char str[] = "{\"program\": {\"status\": \"stopped\"}}";
+	cgiWebsockBroadcast("/ws.cgi", str, os_strlen(str), WEBSOCK_FLAG_NONE);
 }
 
 /*
@@ -330,8 +341,22 @@ LOCAL void ICACHE_FLASH_ATTR vm_execute_task(os_event_t *event) {
 
 	// Get the code at the current program counter.
 	uint8_t *code = &program->functions[sp->pc.func].code[sp->pc.idx];
-	os_printf("Executing instruction at function %d, index %d: %d.\n",
+	debug_print("Executing instruction at function %d, index %d: %d.\n",
 			sp->pc.func, sp->pc.idx, code[0]);
+
+	// Send a message to the web socket.
+	string_builder *sb = create_string_builder(128);
+	if (sb == NULL) {
+		os_printf("Unable to create string builder for web socket reply.");
+	} else {
+		append_string_builder(sb, "{\"program\": {\"status\": \"running\", \"function\": ");
+		append_int32_string_builder(sb, sp->pc.func);
+		append_string_builder(sb, ", \"index\": ");
+		append_int32_string_builder(sb, sp->pc.idx);
+		append_string_builder(sb, "}}");
+		cgiWebsockBroadcast("/ws.cgi", sb->buf, sb->len, WEBSOCK_FLAG_NONE);
+		free_string_builder(sb);
+	}
 
 	// Define variables for use within the below switch block.
 	int32_t operand1;
@@ -348,31 +373,31 @@ LOCAL void ICACHE_FLASH_ATTR vm_execute_task(os_event_t *event) {
 	bool defer_next_instr = false;
 	switch (code[0]) {
 		case INSTR_FD:
-			// Move forward by the amount at the end of the stack.
+			// Move forward by the number of mm at the end of the stack.
 			operand1 = stack_pop();
 			get_straight_steps(&left_scale, &right_scale);
 			operand2 = operand1 * right_scale / 100; 
 			operand1 = operand1 * left_scale  / 100;
 			os_printf("Moving forward by %d, %d steps.\n", operand1, operand2);
-			drive_motors(operand1, operand1, MAX(operand1, operand2), end_move_pause);
+			drive_motors(operand1, operand2, MAX(operand1, operand2), end_move_pause);
 			defer_next_instr = true;
 			break;
 		case INSTR_BK:
-			// Move backwards by the amount at the end of the stack.
+			// Move backwards by the number of mm at the end of the stack.
 			operand1 = stack_pop();
 			get_straight_steps(&left_scale, &right_scale);
 			operand2 = operand1 * right_scale / 100; 
 			operand1 = operand1 * left_scale  / 100;
 			os_printf("Moving backward by %d, %d steps.\n", operand1, operand2);
-			drive_motors(-1 * operand1, -1 * operand1, MAX(operand1, operand2), end_move_pause);
+			drive_motors(-1 * operand1, -1 * operand2, MAX(operand1, operand2), end_move_pause);
 			defer_next_instr = true;
 			break;
 		case INSTR_LT:
 			// Turn left by the number of degrees at the end of the stack.
 			operand1 = stack_pop();
 			get_turn_steps(&left_scale, &right_scale);
-			operand2 = operand1 * right_scale / 90; 
-			operand1 = operand1 * left_scale  / 90;
+			operand2 = operand1 * right_scale / 180; 
+			operand1 = operand1 * left_scale  / 180;
 			os_printf("Turning left by %d, %d steps.\n", operand1, operand2);
 			drive_motors(-1 * operand1, operand2, MAX(operand1, operand2), end_move_pause);
 			defer_next_instr = true;
@@ -381,19 +406,55 @@ LOCAL void ICACHE_FLASH_ATTR vm_execute_task(os_event_t *event) {
 			// Turn right by the number of degrees at the end of the stack.
 			operand1 = stack_pop();
 			get_turn_steps(&left_scale, &right_scale);
-			operand2 = operand1 * right_scale / 90; 
-			operand1 = operand1 * left_scale  / 90;
+			operand2 = operand1 * right_scale / 180; 
+			operand1 = operand1 * left_scale  / 180;
+			os_printf("Turning right by %d, %d steps.\n", operand1, operand2);
+			drive_motors(operand1, -1 * operand2, MAX(operand1, operand2), end_move_pause);
+			defer_next_instr = true;
+			break;
+		case INSTR_FDRAW:
+			// Move forward by the number of steps at the end of the stack, right then left.
+			operand2 = stack_pop();
+			operand1 = stack_pop();
+			os_printf("Moving forward by %d, %d steps.\n", operand1, operand2);
+			drive_motors(operand1, operand2, MAX(operand1, operand2), end_move_pause);
+			defer_next_instr = true;
+			break;
+		case INSTR_BKRAW:
+			// Move backwards by the number of steps at the end of the stack, right then left.
+			operand2 = stack_pop();
+			operand1 = stack_pop();
+			os_printf("Moving backward by %d, %d steps.\n", operand1, operand2);
+			drive_motors(-1 * operand1, -1 * operand2, MAX(operand1, operand2), end_move_pause);
+			defer_next_instr = true;
+			break;
+		case INSTR_LTRAW:
+			// Turn left by the number of steps at the end of the stack, right then left.
+			operand2 = stack_pop();
+			operand1 = stack_pop();
+			os_printf("Turning left by %d, %d steps.\n", operand1, operand2);
+			drive_motors(-1 * operand1, operand2, MAX(operand1, operand2), end_move_pause);
+			defer_next_instr = true;
+			break;
+		case INSTR_RTRAW:
+			// Turn right by the number of steps at the end of the stack, right then left.
+			operand2 = stack_pop();
+			operand1 = stack_pop();
 			os_printf("Turning right by %d, %d steps.\n", operand1, operand2);
 			drive_motors(operand1, -1 * operand2, MAX(operand1, operand2), end_move_pause);
 			defer_next_instr = true;
 			break;
 		case INSTR_PU:
-			// Raise the pen.
+			// Raise the pen, and wait for it to finish moving.
 			servo_up();
+			defer_next_instr = true;
+			end_move_pause();
 			break;
 		case INSTR_PD:
-			// Lower the pen.
+			// Lower the pen, and wait for it to finish moving.
 			servo_down();
+			defer_next_instr = true;
+			end_move_pause();
 			break;
 		case INSTR_IADD:
 			// Add the topmost two values on the stack and add it to the stack.

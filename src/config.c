@@ -9,6 +9,8 @@
 #include "osapi.h"
 #include "mem.h"
 
+#include "config.h"
+
 // The flash sector used for storing and retrieving the configuration.
 #define CONFIG_SECTOR 0x102
 
@@ -19,16 +21,6 @@ static uint32_t const DEFAULT_STRAIGHT_STEPS = 1729;
 
 // The default value to use for the number of steps for each motor to turn the turtle 90 degrees.
 static uint32_t const DEFAULT_TURN_STEPS = 2052;
-
-/*
- * Configuration structure holding the parameters that are stored in flash and returned to users.
- */
-typedef struct config_t {
-	uint32_t straight_steps_left;  // The number of steps for the left motor to move 100mm.
-	uint32_t straight_steps_right; // The number of steps for the right motor to move 100mm.
-	uint32_t turn_steps_left;      // The number of steps for the left motor to turn 90 degrees.
-	uint32_t turn_steps_right;     // The number of steps for the right motor to turn 90 degrees.
-} config_t;
 
 /*
  * Structure for the physical storage of configuration parameters in the flash. This includes a "magic" value that is

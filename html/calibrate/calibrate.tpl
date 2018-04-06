@@ -13,14 +13,89 @@ function toggleVisible(elem) {
 	}
 }
 
+function saveValues() {
+	var straightStepsLeft = document.getElementById("left-straight").value;
+	var straightStepsRight = document.getElementById("right-straight").value;
+	var turnStepsLeft = document.getElementById("left-turn").value;
+	var turnStepsRight = document.getElementById("right-turn").value;
+	var struct = {"configuration": { 
+		"straightStepsLeft": straightStepsLeft,
+		"straightStepsRight": straightStepsRight,
+		"turnStepsLeft": turnStepsLeft,
+		"turnStepsRight": turnStepsRight}};
+	var xhr = new XMLHttpRequest();
+	xhr.open('POST', '/setConfiguration.cgi');
+	xhr.onreadystatechange = function() {
+		if (xhr.readyState == XMLHttpRequest.DONE) {
+			if ((xhr.status >= 200) && (xhr.status < 300)) {
+				// Successful return.
+				document.getElementById("unsaved").style.display = "none";
+			} else {
+				alert("Unable to save the calibration values, error " +
+						xhr.status + ": " + xhr.statusText);
+			}
+		}
+	};
+	xhr.send("configuration=" + JSON.stringify(struct));
+}
+
 function drawLine() {
-	var box = document.getElementById("straight-entry");
-	toggleVisible(box);
+	var straightStepsLeft = document.getElementById("left-straight").value;
+	var straightStepsRight = document.getElementById("right-straight").value;
+	var xhr = new XMLHttpRequest();
+	xhr.open('POST', '/calibrate/drawLine.cgi');
+	xhr.onreadystatechange = function() {
+		if (xhr.readyState == XMLHttpRequest.DONE) {
+			var box = document.getElementById("straight-entry");
+			if ((xhr.status >= 200) && (xhr.status < 300)) {
+				// Successful return.
+				box.style.display = "block";
+			} else {
+				box.style.display = "none";
+				alert("Unable to run calibration, error " +
+						xhr.status + ": " + xhr.statusText);
+			}
+		}
+	};
+	xhr.send("left=" + straightStepsLeft + "&right=" + straightStepsRight);
 }
 
 function drawTurn() {
-	var box = document.getElementById("turn-entry");
-	toggleVisible(box);
+	var straightStepsLeft = document.getElementById("left-straight").value;
+	var straightStepsRight = document.getElementById("right-straight").value;
+	var turnStepsLeft = document.getElementById("left-turn").value;
+	var turnStepsRight = document.getElementById("right-turn").value;
+	var xhr = new XMLHttpRequest();
+	xhr.open('POST', '/calibrate/drawTurn.cgi');
+	xhr.onreadystatechange = function() {
+		if (xhr.readyState == XMLHttpRequest.DONE) {
+			var box = document.getElementById("turn-entry");
+			if ((xhr.status >= 200) && (xhr.status < 300)) {
+				// Successful return.
+				box.style.display = "block";
+			} else {
+				box.style.display = "none";
+				alert("Unable to run calibration, error " +
+						xhr.status + ": " + xhr.statusText);
+			}
+		}
+	};
+	xhr.send("left=" + turnStepsLeft +
+			 "&right=" + turnStepsRight + 
+			 "&leftStraight=" + straightStepsLeft +
+			 "&rightStraight=" + straightStepsRight);
+}
+
+function hideStraight() {
+	document.getElementById("straight-entry").style.display = "none";
+}
+
+function hideTurn() {
+	document.getElementById("turn-entry").style.display = "none";
+}
+
+function showUnsaved() {
+	document.getElementById("unsaved").style.display = "block";
 }
 
 function updateStraightValues() {
@@ -44,6 +119,8 @@ function updateStraightValues() {
 	var scale = 100.0 / len;
 	left.value = Math.round(parseInt(left.value) * scale);
 	right.value = Math.round(parseInt(right.value) * scale);
+
+	showUnsaved();
 }
 
 function updateTurnValues() {
@@ -65,6 +142,8 @@ function updateTurnValues() {
 	var scale = 180.0 / angle;
 	left.value = Math.round(parseInt(left.value) * scale);
 	right.value = Math.round(parseInt(right.value) * scale);
+
+	showUnsaved();
 }
 
 /*
@@ -89,6 +168,31 @@ document.addEventListener("DOMContentLoaded", function() {
 			document.getElementById("arrow-turn").className = "arrow-right";
 		}
 	});
+
+	var straightStepsLeft = "%straightStepsLeft%";
+	var straightStepsRight = "%straightStepsRight%";
+	var turnStepsLeft = "%turnStepsLeft%";
+	var turnStepsRight = "%turnStepsRight%";
+	if (straightStepsLeft.startsWith("%")) {
+		straightStepsLeft = 1728;
+	}
+	if (straightStepsRight.startsWith("%")) {
+		straightStepsRight = 1730;
+	}
+	if (turnStepsLeft.startsWith("%")) {
+		turnStepsLeft = 2051;
+	}
+	if (turnStepsRight.startsWith("%")) {
+		turnStepsRight = 2053;
+	}
+	document.getElementById("left-straight").value = straightStepsLeft;
+	document.getElementById("right-straight").value = straightStepsRight;
+	document.getElementById("left-turn").value = turnStepsLeft;
+	document.getElementById("right-turn").value = turnStepsRight;
+	document.getElementById("left-straight").addEventListener("change", showUnsaved);
+	document.getElementById("right-straight").addEventListener("change", showUnsaved);
+	document.getElementById("left-turn").addEventListener("change", showUnsaved);
+	document.getElementById("right-turn").addEventListener("change", showUnsaved);
 });
 
 	</script>
@@ -113,6 +217,7 @@ document.addEventListener("DOMContentLoaded", function() {
 		</p>
 		<a class="button" href="javascript:drawLine()">Draw Line</a>
 		<div id="straight-entry" class="question-box" style="display: none;">
+			<div class="close-x"><a class="close-x" href="javascript:hideStraight()">&times;</a></div>
 			<form id="straight-form">
 				<label for="length">
 					1. Measure the vertical length of the line (ignore any curve)
@@ -152,6 +257,7 @@ document.addEventListener("DOMContentLoaded", function() {
 		</p>
 		<a class="button" href="javascript:drawTurn()">Test Turn</a>
 		<div id="turn-entry" class="question-box" style="display: none;">
+			<div class="close-x"><a class="close-x" href="javascript:hideTurn()">&times;</a></div>
 			<form id="turn-form">
 				<label for="dist">
 					Measure the horizontal distance between the vertial line and the 180° line.

@@ -26,11 +26,10 @@ table {
 }
 table, th, td {
 	padding: 5px;
-	border: 1px solid #ddd;
 	border-collapse: collapse;
 }
 th {
-	background-color: #a0c8ff;
+	background-color: #eef5ff;
 	font-weight: bold;
 }
 
@@ -115,4 +114,16 @@ table input {
 	border-right: 5px solid transparent;
 	border-left: 5px solid transparent;
 	border-top: 5px solid black;
+}
+
+div.close-x {
+	float: right;
+	margin-top: -17px;
+	margin-right: -12px;
+}
+
+a.close-x {
+	text-decoration-line: none;
+	color: black;
+	font-size: 1.5em;
 }

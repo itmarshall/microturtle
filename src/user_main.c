@@ -35,6 +35,7 @@
 
 LOCAL const uint16_t TICK_COUNT = 100;
 LOCAL const uint16_t CODE_LEN = 1024;
+LOCAL const uint16_t CONFIG_LEN = 512;
 
 LOCAL int16_t rc_left = 0;
 LOCAL int16_t rc_right = 0;
@@ -282,7 +283,7 @@ LOCAL int ICACHE_FLASH_ATTR cgiRunBytecode(HttpdConnData *connData) {
 
 	// See if this is the program command.
 	if (check_key(&index, code, CODE_LEN, 1, "program") == -1) {
-		// Currently, only the drive command is supported, and this is not it.
+		// Currently, only the program command is supported, and this is not it.
 		httpCodeReturn(connData, 400, "Bad parameter", "Invalid \"code\" parameter - not a program.");
 		return HTTPD_CGI_DONE;
 	}
@@ -713,7 +714,7 @@ LOCAL void ICACHE_FLASH_ATTR httpCodeReturn(HttpdConnData *connData, uint16_t co
 	httpdSend(connData, "</p></body></html>", -1);
 }
 
-LOCAL int ICACHE_FLASH_ATTR tpl_set_configuration(HttpdConnData *connData, char *token, void **arg) {
+LOCAL int ICACHE_FLASH_ATTR tpl_get_configuration(HttpdConnData *connData, char *token, void **arg) {
 	if (token == NULL) {
 		// The call has been cancelled.
 		return HTTPD_CGI_DONE;
@@ -739,6 +740,116 @@ LOCAL int ICACHE_FLASH_ATTR tpl_set_configuration(HttpdConnData *connData, char 
 
 	// Send the buffer's contents to fill in the token.
 	httpdSend(connData, buf, -1);
+	return HTTPD_CGI_DONE;
+}
+
+/*
+ * Sets the configuration data for the calibration in the ESP's flash memory.
+ */
+LOCAL int ICACHE_FLASH_ATTR cgiSetConfiguration(HttpdConnData *connData) {
+	if (connData == NULL) {
+		return HTTPD_CGI_DONE;
+	}
+
+	// Get the parameters.
+	char configuration[CONFIG_LEN];
+	if (httpdFindArg(connData->post->buff, "configuration", configuration, CONFIG_LEN) == -1) {
+		httpCodeReturn(connData, 400, "Missing parameter", "Missing the \"left\" parameter.");
+		return HTTPD_CGI_DONE;
+	}
+
+	// Convert the structure into the configuration entries.
+	// We expect the following JSON format:
+	// {"configuration":{
+	//   {"straightStepsLeft": <straight_steps_left>
+	//    "straightStepsRight": <straight_steps_right>
+	//    "turnStepsLeft": <turn_steps_left>
+	//    "turnStepsRight": <turn_steps_right>
+	//   }
+	// }}
+	// First, check we are an object.
+	int index = 0;
+	index = skip_whitespace(0, configuration, CONFIG_LEN);
+	if (index == -1) {
+		httpCodeReturn(connData, 400, "Bad parameter", "Invalid \"configuration\" parameter preamble.");
+		return HTTPD_CGI_DONE;
+	}
+	if (configuration[index++] != '{') {
+		// We must start with an object.
+		httpCodeReturn(connData, 400, "Bad parameter", "Invalid \"configuration\" parameter opening.");
+		return HTTPD_CGI_DONE;
+	}
+
+	// See if this is the configuration command.
+	if (check_key(&index, configuration, CODE_LEN, 1, "configuration") == -1) {
+		// Currently, only the drive command is supported, and this is not it.
+		httpCodeReturn(connData, 400, "Bad parameter", "Invalid \"configuration\" parameter - not a configuration.");
+		return HTTPD_CGI_DONE;
+	}
+
+	if (configuration[index++] != '{') {
+		// All programs must be objects.
+		httpCodeReturn(connData, 400, "Bad parameter", 
+				"Invalid \"configuration\" parameter - configuration command must be an object.");
+		return HTTPD_CGI_DONE;
+	}
+	config_t config;
+	int match_index;
+	bool have_ssl = false;
+	bool have_ssr = false;
+	bool have_tsl = false;
+	bool have_tsr = false;
+	while (true) {
+		match_index = check_key(&index, configuration, CONFIG_LEN, 4,
+				"straightStepsLeft", "straightStepsRight", "turnStepsLeft", "turnStepsRight");
+		if ((match_index >= 0) && (match_index < 4)) {
+			int32_t value = read_int_32(&index, configuration, CONFIG_LEN);
+			if (value < 100) {
+				httpCodeReturn(connData, 400, "Bad parameter",
+						"Invalid value for configuration value in \"configuration\" parameter.");
+				return HTTPD_CGI_DONE;
+			}
+			switch (match_index) {
+				case 0:
+					// Straight steps left.
+					config.straight_steps_left = value;
+					have_ssl = true;
+					break;
+				case 1:
+					// Straight steps right.
+					config.straight_steps_right = value;
+					have_ssr = true;
+					break;
+				case 2:
+					// Turn steps left.
+					config.turn_steps_left = value;
+					have_tsl = true;
+					break;
+				case 3:
+					// Turn steps right.
+					config.turn_steps_right = value;
+					have_tsr = true;
+					break;
+			}
+		} else {
+			httpCodeReturn(connData, 400, "Bad parameter",
+					"Invalid \"configuration\" parameter - unknown configuration field.");
+			return HTTPD_CGI_DONE;
+		}
+	}
+
+	if (!have_ssl || !have_ssr || !have_tsl || !have_tsr) {
+		httpCodeReturn(connData, 400, "Bad parameter",
+				"Missing \"configuration\" parameter field.");
+		return HTTPD_CGI_DONE;
+	}
+
+	// Store the configuration.
+	if (store_configuration(&config)) {
+		httpCodeReturn(connData, 200, "OK", "OK");
+	} else {
+		httpCodeReturn(connData, 500, "Internal error", "Unable to store configuration in flash memory.");
+	}
 	return HTTPD_CGI_DONE;
 }
 
@@ -805,9 +916,10 @@ HttpdBuiltInUrl builtInUrls[]={
 	{"/", cgiRedirect, "/welcome.html"},
 	{"/runBytecode.cgi", cgiRunBytecode, NULL},
 	{"/ws.cgi", cgiWebsocket, ws_connected},
-	{"/calibrate/calibrate.tpl", cgiEspFsTemplate, tpl_set_configuration},
+	{"/calibrate/calibrate.tpl", cgiEspFsTemplate, tpl_get_configuration},
 	{"/calibrate/drawLine.cgi", cgiCalibrateLine, NULL},
 	{"/calibrate/drawTurn.cgi", cgiCalibrateTurn, NULL},
+	{"/calibrate/setConfiguration.cgi", cgiSetConfiguration, NULL},
 	{"*", cgiEspFsHook, NULL}, //Catch-all cgi function for the filesystem
 	{NULL, NULL, NULL}
 };

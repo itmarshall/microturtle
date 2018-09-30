@@ -134,7 +134,7 @@ typedef struct global_t {
 } global_t;
 
 // Forward definitions.
-LOCAL void ICACHE_FLASH_ATTR free_program();
+LOCAL void ICACHE_FLASH_ATTR free_program(program_t *prog);
 LOCAL stack_frame_t * ICACHE_FLASH_ATTR create_stack_frame(function_t *function);
 LOCAL void ICACHE_FLASH_ATTR execute_instruction();
 void ICACHE_FLASH_ATTR program_error(char *message);
@@ -182,45 +182,53 @@ bool ICACHE_FLASH_ATTR run_program(program_t *prog) {
 	}
 	if (prog->global_count > MAX_VAR_COUNT) {
 		os_printf("Too many global variables - %d.\n", prog->global_count);
+		free_program(prog);
 		return false;
 	}
 	if (prog->function_count > MAX_FUNC_COUNT) {
 		os_printf("Too many functions - %d.\n", prog->function_count);
+		free_program(prog);
 		return false;
 	}
 	if (prog->function_count == 0) {
 		os_printf("No functions defined.\n");
+		free_program(prog);
 		return false;
 	}
 	for (uint32_t ii = 0; ii < prog->function_count; ii++) {
 		if (prog->functions[ii].argument_count > MAX_VAR_COUNT) {
 			os_printf("Too many arguments for function %d - %d.\n",
 					ii, prog->functions[ii].argument_count);
+			free_program(prog);
 			return false;
 		}
 		if (prog->functions[ii].local_count > MAX_VAR_COUNT) {
 			os_printf("Too many local variables for function %d - %d.\n",
 					ii, prog->functions[ii].local_count);
+			free_program(prog);
 			return false;
 		}
 		if (prog->functions[ii].stack_size > MAX_STACK_SIZE) {
 			os_printf("Stack size too large for function %d - %d.\n",
 					ii, prog->functions[ii].stack_size);
+			free_program(prog);
 			return false;
 		}
 		if (prog->functions[ii].length > MAX_FUNC_LEN) {
 			os_printf("Function %d is too long - %d bytes.\n",
 					ii, prog->functions[ii].length);
+			free_program(prog);
 			return false;
 		}
 		if (prog->functions[ii].length == 0) {
 			os_printf("Function %d has no contents.\n", ii);
+			free_program(prog);
 			return false;
 		}
 	}
 
 	// Delete any old program information.
-	free_program();
+	free_program(NULL);
 
 	// Copy the program pointer locally.
 	program = prog;
@@ -228,7 +236,7 @@ bool ICACHE_FLASH_ATTR run_program(program_t *prog) {
 	// Initialise the stack.
 	stack = create_stack_frame(&program->functions[0]);
 	if (stack == NULL) {
-		free_program();
+		free_program(NULL);
 		return false;
 	}
 	sp = stack;
@@ -239,7 +247,7 @@ bool ICACHE_FLASH_ATTR run_program(program_t *prog) {
 		globals.values = (int32_t *)os_malloc(globals.global_count * sizeof(int32_t));
 		if (globals.values == NULL) {
 			os_printf("Unable to allocate global memory.\n");
-			free_program();
+			free_program(NULL);
 			return false;
 		}
 	} else {
@@ -253,41 +261,52 @@ bool ICACHE_FLASH_ATTR run_program(program_t *prog) {
 
 /*
  * Deallocates the storage for the program and all its' functions, stacks and global variables.
+ * If prog is NULL, the global program is freed, otherwise, the memory pointed to by prog is freed.
  */
-LOCAL void ICACHE_FLASH_ATTR free_program() {
-	if (program != NULL) {
+LOCAL void ICACHE_FLASH_ATTR free_program(program_t *prog) {
+	program_t *ptr = prog;
+	bool global_program = false;
+	if (prog == NULL) {
+		ptr = prog;
+		global_program = true;
+	}
+
+	if (ptr != NULL) {
 		// Free the functions within the program.
-		if (program->functions != NULL) {
-			for (uint32_t ii = 0; ii < program->function_count; ii++) {
-				if (program->functions[ii].code != NULL) {
-					os_free(program->functions[ii].code);
+		if (ptr->functions != NULL) {
+			for (uint32_t ii = 0; ii < ptr->function_count; ii++) {
+				if (ptr->functions[ii].code != NULL) {
+					os_free(ptr->functions[ii].code);
 				}
 			}
-			os_free(program->functions);
+			os_free(ptr->functions);
 		}
 
 		// Free the program itself.
-		os_free(program);
+		os_free(ptr);
+	}
+
+	if (global_program) {
 		program = NULL;
-	}
 
-	// Free the stack memory.
-	while (stack != NULL) {
-		stack_frame_t *s = stack;
-		stack = s->next;
-		os_free(s->locals);
-		os_free(s->stack);
-		os_free(s);
-		stack = NULL;
-	}
-	sp = NULL;
+		// Free the stack memory.
+		while (stack != NULL) {
+			stack_frame_t *s = stack;
+			stack = s->next;
+			os_free(s->locals);
+			os_free(s->stack);
+			os_free(s);
+			stack = NULL;
+		}
+		sp = NULL;
 
-	// Free the global memory.
-	if (globals.values != NULL) {
-		os_free(globals.values);
+		// Free the global memory.
+		if (globals.values != NULL) {
+			os_free(globals.values);
+		}
+		globals.global_count = 0;
+		globals.values = NULL;
 	}
-	globals.global_count = 0;
-	globals.values = NULL;
 }
 
 /*
@@ -326,7 +345,7 @@ LOCAL void ICACHE_FLASH_ATTR vm_execute_task(os_event_t *event) {
 	// Ensure we're still running the program.
 	if ((program_status != RUNNING) || (program == NULL)) {
 		if (program != NULL) {
-			free_program();
+			free_program(NULL);
 		}
 		program_status = IDLE;
 		os_printf("Not executing instruction as program status is not running.\n");
@@ -784,7 +803,7 @@ LOCAL void ICACHE_FLASH_ATTR vm_execute_task(os_event_t *event) {
 void ICACHE_FLASH_ATTR program_error(char *message) {
 	os_printf(message);
 	program_status = ERROR;
-	free_program();
+	free_program(NULL);
 }
 
 /*

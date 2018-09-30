@@ -24,7 +24,7 @@ function saveValues() {
 		"turnStepsLeft": turnStepsLeft,
 		"turnStepsRight": turnStepsRight}};
 	var xhr = new XMLHttpRequest();
-	xhr.open('POST', '/setConfiguration.cgi');
+	xhr.open('POST', '/calibrate/setConfiguration.cgi');
 	xhr.onreadystatechange = function() {
 		if (xhr.readyState == XMLHttpRequest.DONE) {
 			if ((xhr.status >= 200) && (xhr.status < 300)) {

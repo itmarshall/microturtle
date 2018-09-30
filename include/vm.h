@@ -40,8 +40,9 @@ typedef enum prog_status_t {
 } prog_status_t;
 
 /*
- * Runs a program on the micro-turtle in the background. The supplied program information can be
- * freed after this invocation, as a local copy is made prior to running the program.
+ * Runs a program on the micro-turtle in the background. The supplied program information is used
+ * directoy, so the memory cannot be modified. The memory will automatically be freed when the
+ * program's execution has halted.
  */
 bool run_program(program_t *prog);
 

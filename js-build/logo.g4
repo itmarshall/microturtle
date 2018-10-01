@@ -25,6 +25,7 @@ command
     | RT expr                          # RT
     | PU                               # PU
     | PD                               # PD
+	| WAIT expr                        # Wait
     | RETURN                           # Return
     | STOP                             # Stop
     | MAKE '"' STRING expr             # Make
@@ -120,6 +121,11 @@ PU
 PD
     : [Pp][Dd]
     | [Pp][Ee][Nn][Dd][Oo][Ww][Nn]
+    ;
+
+/* Case insensitive token for the "wait" command. */
+WAIT
+    : [Ww][Aa][Ii][Tt]
     ;
 
 /* Case insensitive token for the "make" command. */

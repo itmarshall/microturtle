@@ -96,6 +96,7 @@
 #define INSTR_BKRAW     45
 #define INSTR_LTRAW     46
 #define INSTR_RTRAW     47
+#define INSTR_WAIT      48
 
 // The lengths of each instruction in bytes, including the instruction itself.
 const uint8_t INSTR_LEN[] = {
@@ -139,6 +140,7 @@ LOCAL stack_frame_t * ICACHE_FLASH_ATTR create_stack_frame(function_t *function)
 LOCAL void ICACHE_FLASH_ATTR execute_instruction();
 void ICACHE_FLASH_ATTR program_error(char *message);
 void ICACHE_FLASH_ATTR end_move_pause();
+void ICACHE_FLASH_ATTR pause(uint32_t duration);
 LOCAL inline bool stack_push(int32_t val);
 LOCAL inline int32_t stack_pop();
 
@@ -781,6 +783,14 @@ LOCAL void ICACHE_FLASH_ATTR vm_execute_task(os_event_t *event) {
 				auto_update_pc = false;
 			}
 			break;
+		case INSTR_WAIT:
+			// Performs a wait operation for the specified number of seconds.
+			operand1 = stack_pop();
+			if (operand1 > 0) {
+				pause((uint32_t)(operand1 * 1000));
+				defer_next_instr = true;
+			}
+			break;
 		default:
 			// Unknown instruction.
 			program_error("Unknown instruction in program.");
@@ -813,6 +823,14 @@ void ICACHE_FLASH_ATTR program_error(char *message) {
 void ICACHE_FLASH_ATTR end_move_pause() {
 	// Trigger the post movement pause timer.
     os_timer_arm(&move_pause_timer, MOVE_PAUSE_DURATION, false);
+}
+
+/*
+ * Waits for a period of time before invoking the next program instruction.
+ */
+void ICACHE_FLASH_ATTR pause(uint32_t duration) {
+	// Trigger the post movement pause timer to perform this delay.
+    os_timer_arm(&move_pause_timer, duration, false);
 }
 
 /*

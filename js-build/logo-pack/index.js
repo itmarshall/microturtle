@@ -395,6 +395,9 @@ AssemblerFactory.prototype.instrBrt = function(label) {
 AssemblerFactory.prototype.instrBrf = function(label) {
     this._currentSegment.push("  brf  " + label);
 };
+AssemblerFactory.prototype.instrWait = function(label) {
+    this._currentSegment.push("  wait");
+};
 
 /*
  * The LogoDefs object is used to record the definitions of variables and 
@@ -846,6 +849,9 @@ LogoAssembler.prototype.exitPU = function(ctx) {
 LogoAssembler.prototype.exitPD = function(ctx) {
     this._asm.instrPd();
 };
+LogoAssembler.prototype.exitWait = function(ctx) {
+    this._asm.instrWait();
+};
 LogoAssembler.prototype.exitMulDiv = function(ctx) {
     if (ctx.MUL() !== null) {
         this._asm.instrIMul();
@@ -957,7 +963,11 @@ function AsmCompiler() {
         // Comparison op-codes.
         ["ilt", 32, 0], ["ile", 33, 0], ["igt", 34, 0], ["ige", 35, 0], ["ieq", 36, 0], ["ine", 37, 0],
         // Control flow op-codes.
-        ["call", 38, 1], ["ret", 39, 0], ["stop", 40, 0], ["br", 41, 1], ["brt", 42, 1], ["brf", 43, 1]];
+        ["call", 38, 1], ["ret", 39, 0], ["stop", 40, 0], ["br", 41, 1], ["brt", 42, 1], ["brf", 43, 1],
+		// Raw op-codes, these move the set number of steps, not mm.
+		["fdraw", 44, 0], ["bkraw", 45, 0], ["ltraw", 46, 0], ["rtraw", 47, 0], 
+		// Other op-codes.
+		["wait", 48, 0]];
 
         // Populate the instruction map with the above op-codes.
         this._instrMap = new Map();

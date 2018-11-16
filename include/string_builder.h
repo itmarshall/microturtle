@@ -33,6 +33,13 @@ string_builder * ICACHE_FLASH_ATTR create_string_builder(int initial_len);
 void ICACHE_FLASH_ATTR free_string_builder(string_builder *buf);
 
 /*
+ * Compares a string against the contents of the string builder.
+ * Returns a number less than zero if the string builder is less than the string, zero if they match or
+ * a number greater than zero if the string builder is greater than the string.
+ */
+int ICACHE_FLASH_ATTR string_builder_strncmp(string_builder *sb, char *str, size_t len);
+
+/*
  * Appends a string to a pre-existing string builder. The builder is expanded to store the new string if
  * required.
  */
@@ -49,6 +56,12 @@ bool ICACHE_FLASH_ATTR append_string_builder_to_string_builder(string_builder *b
  * the new string if requried.
  */
 bool ICACHE_FLASH_ATTR append_int32_string_builder(string_builder *buf, const int32_t val);
+
+/*
+ * Appends a character to a pre-existing string builder. The builder is expanded to store the new string if 
+ * requried.
+ */
+bool ICACHE_FLASH_ATTR append_char_string_builder(string_builder *buf, const char c);
 
 /*
  * Dumps the contents of the builder via "os_printf". Designed for debugging purposes.

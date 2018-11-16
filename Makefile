@@ -16,7 +16,7 @@
 PROJ_NAME ?= microturtle
 
 # hostname or IP address for OTA flashing
-ESP_HOSTNAME ?= 10.0.1.38
+ESP_HOSTNAME ?= 10.0.1.83
 
 # --------------- toolchain configuration ---------------
 

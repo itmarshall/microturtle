@@ -19,10 +19,10 @@ function saveValues() {
 	var turnStepsLeft = document.getElementById("left-turn").value;
 	var turnStepsRight = document.getElementById("right-turn").value;
 	var struct = {"configuration": { 
-		"straightStepsLeft": straightStepsLeft,
-		"straightStepsRight": straightStepsRight,
-		"turnStepsLeft": turnStepsLeft,
-		"turnStepsRight": turnStepsRight}};
+		"straightStepsLeft": parseInt(straightStepsLeft),
+		"straightStepsRight": parseInt(straightStepsRight),
+		"turnStepsLeft": parseInt(turnStepsLeft),
+		"turnStepsRight": parseInt(turnStepsRight)}};
 	var xhr = new XMLHttpRequest();
 	xhr.open('POST', '/calibrate/setConfiguration.cgi');
 	xhr.onreadystatechange = function() {
@@ -173,16 +173,16 @@ document.addEventListener("DOMContentLoaded", function() {
 	var straightStepsRight = "%straightStepsRight%";
 	var turnStepsLeft = "%turnStepsLeft%";
 	var turnStepsRight = "%turnStepsRight%";
-	if (straightStepsLeft.startsWith("%")) {
+	if (isNaN(parseInt(straightStepsLeft))) {
 		straightStepsLeft = 1728;
 	}
-	if (straightStepsRight.startsWith("%")) {
+	if (isNaN(parseInt(straightStepsRight))) {
 		straightStepsRight = 1730;
 	}
-	if (turnStepsLeft.startsWith("%")) {
+	if (isNaN(parseInt(turnStepsLeft))) {
 		turnStepsLeft = 2051;
 	}
-	if (turnStepsRight.startsWith("%")) {
+	if (isNaN(parseInt(turnStepsRight))) {
 		turnStepsRight = 2053;
 	}
 	document.getElementById("left-straight").value = straightStepsLeft;
@@ -198,13 +198,12 @@ document.addEventListener("DOMContentLoaded", function() {
 	</script>
 </head>
 <body>
-</body>
 	<div class="banner">
 		MicroTurtle Calibration
 	</div>
 
-	<h2 id="straight-header"><div id="arrow-straight" class="arrow-right">&nbsp;</div>Straight Lines</h2>
-	<div id="straight-contents" style="display: none;">
+	<h3 id="straight-header"><div id="arrow-straight" class="arrow-down">&nbsp;</div>Straight Lines</h3>
+	<div id="straight-contents">
 		<p>
 		Calibration of straight lines allows the turtle's forwards and backwards 
 		movements to move the turtle the correct amount. The calibration value for 
@@ -239,8 +238,8 @@ document.addEventListener("DOMContentLoaded", function() {
 			<a class="button" href="javascript:updateStraightValues()">Calculate</a>
 		</div>
 	</div>
-	<h2 id="turn-header"><div id="arrow-turn" class="arrow-right">&nbsp;</div>Turning Angle</h2>
-	<div id="turn-contents" style="display: none;">
+	<h3 id="turn-header"><div id="arrow-turn" class="arrow-down">&nbsp;</div>Turning Angle</h3>
+	<div id="turn-contents">
 		<p>
 		Calibration of turning angles allows the turtle's left and right turns to
 		turn the turtle the correct amount. The calibration value for turning angles
@@ -277,6 +276,7 @@ document.addEventListener("DOMContentLoaded", function() {
 		<br>
 		<br>
 	</div>
+	<h3>Current Values</h3>
 	The current values to be used for the calibration tests are:
 	<table>
 		<tr><th>&nbsp;</th><th>Left Motor</th><th>Right Motor</th></tr>
@@ -294,4 +294,8 @@ document.addEventListener("DOMContentLoaded", function() {
 	</div>
 	<br>
 	<a class="button" href="javascript:saveValues()">Save Values</a>
+</body>
+<footer>
+	© 2018 Ian Marshall
+</footer>
 </html>

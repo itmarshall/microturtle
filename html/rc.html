@@ -1,5 +1,6 @@
 <html>
 <head>
+	<meta charset="utf-8">
 	<title>MicroTurtle Remote Control</title>
 	<link rel="stylesheet" type="text/css" href="/style.css"/>
 	<script type="text/javascript">
@@ -14,6 +15,7 @@ var touchId = 0;
 var wsURI = "ws://" + window.location.host + "/ws.cgi";
 var ws;
 var connected = false;
+var penPosition = "up";
 
 /*
  * Handles the opening of a web socket connection.
@@ -37,7 +39,21 @@ function wsClose(e) {
  * Handles the reception of a message via the web socket.
  */
 function wsMessage(e) {
-	// Ignore messages for now.
+	var values = JSON.parse(e.data);
+	if (values !== undefined) {
+		if (values.servo !== undefined) {
+			// This is a servo position message.
+			if (values.servo.position !== undefined) {
+				// We have a valid servo position.
+				penPosition = values.servo.position;
+				var altValue = "Up";
+				if (values.servo.position === "up") {
+					altValue = "Down";
+				}
+				document.getElementById("penButton").value = "Move Pen " + altValue;
+			}
+		}
+	}
 }
 
 /*
@@ -62,6 +78,21 @@ function connectWebSocket() {
 	ws.addEventListener('close', wsClose);
 	//ws.addEventListener('error', wsError);
 	ws.addEventListener('message', wsMessage);
+
+	// Request the current position.
+	sendToWebSocket('{"getPen":1}');
+}
+
+/*
+ * Moves the pen up or down (opposite to what it currently is.)
+ */
+function movePen() {
+	var newPosition
+	if (penPosition === "up") {
+		sendToWebSocket('{"movePen":"down"}');
+	} else {
+		sendToWebSocket('{"movePen":"up"}');
+	}
 }
 
 /*
@@ -255,12 +286,19 @@ document.addEventListener("DOMContentLoaded", function() {
 	</script>
 </head>
 <body>
-</body>
 	<div class="banner">
 		MicroTurtle Remote Control
 	</div>
 
 	<canvas id="remote" width="200" height="200"></canvas>
 
+	<div>
+		<input type="button" value="Move Pen --" id="penButton" onclick="movePen()">
+	</div>
+
 	<p>MicroTurtle connection status: <span id="status">N/A</span></p>
+</body>
+<footer>
+	© 2018 Ian Marshall
+</footer>
 </html>

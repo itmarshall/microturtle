@@ -11,6 +11,9 @@
 // Definition of callback function for motor movement completion events.
 typedef void motor_callback_t();
 
+// Type to hold the position of the servo holding the pen.
+typedef enum servo_position_t {UP, DOWN} servo_position_t;
+
 /*
  * Sets the servo to the "up" position.
  */
@@ -20,6 +23,11 @@ void servo_up();
  * Sets the servo to the "down" position.
  */
 void servo_down();
+
+/*
+ * Returns the servo's current position.
+ */
+servo_position_t get_servo();
 
 /*
  * Stops all stepper motors by turning off the current to their coils.

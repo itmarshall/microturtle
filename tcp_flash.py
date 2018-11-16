@@ -75,6 +75,7 @@ if response != "Ready\r\n":
 
 # Send the firmware.
 print 'Sending {} bytes of firmware'.format(len(contents))
+s.settimeout(120)
 s.sendall(contents)
 response = s.recv(128)
 if len(response) > 0:

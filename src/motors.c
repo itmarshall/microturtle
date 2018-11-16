@@ -11,13 +11,14 @@
 #include "gpio.h"
 #include "pwm.h"
 
+#include "http.h"
 #include "motors.h"
 
 #define PWM_PERIOD 20000 // 20ms
 #define PWM_MIN 22222    // 1ms
 #define PWM_MAX 44444    // 2ms
-#define SERVO_UP_ANGLE 90
-#define SERVO_DOWN_ANGLE -90
+#define SERVO_UP_ANGLE 60
+#define SERVO_DOWN_ANGLE -60
 
 // Absolute value macro.
 #define ABS(x) (((x) < 0) ? -(x) : (x));
@@ -63,32 +64,36 @@ LOCAL int32_t next_steps[STEPPER_MOTOR_COUNT] = {0, 0};
 // The timer used for moving the stepper motors.
 LOCAL os_timer_t motor_timer;
 
-// S1 - GPIO 0,  2,  4,  5
-// S2 - GPIO 3, 12, 13, 14
+// The current position of the servo.
+LOCAL servo_position_t servo_pos; 
+
+// S1 - GPIO 2, 15, 12, 14
+// S2 - GPIO 3,  5,  4,  0
 #define STEP_SEQUENCE_COUNT 8
-#define STEPPER_1_MASK (BIT0 | BIT2  | BIT4  | BIT5)
-#define STEPPER_2_MASK (BIT3 | BIT12 | BIT13 | BIT14)
+#define STEPPER_1_MASK (BIT2 | BIT15 | BIT12 | BIT14)
+#define STEPPER_2_MASK (BIT3 | BIT5  | BIT4  | BIT0)
+
 LOCAL uint32_t step_values[STEPPER_MOTOR_COUNT][STEP_SEQUENCE_COUNT] = {
 	{
 	 // Stepper 1.
-	 BIT0,
-	 BIT0 | BIT2,
 	 BIT2,
-	 BIT2 | BIT4,
-	 BIT4,
-	 BIT4 | BIT5,
-	 BIT5,
-	 BIT5 | BIT0
+	 BIT2 | BIT15,
+	 BIT15,
+	 BIT15 | BIT12,
+	 BIT12,
+	 BIT12 | BIT14,
+	 BIT14,
+	 BIT14 | BIT2
 	}, {
 	 // Stepper 2.
 	 BIT3,
-	 BIT3 | BIT12,
-	 BIT12,
-	 BIT12 | BIT13,
-	 BIT13,
-	 BIT13 | BIT14,
-	 BIT14,
-	 BIT14 | BIT3
+	 BIT3 | BIT5,
+	 BIT5,
+	 BIT5 | BIT4,
+	 BIT4,
+	 BIT4 | BIT0,
+	 BIT0,
+	 BIT0 | BIT3
 	}
 };
 
@@ -121,6 +126,8 @@ LOCAL void ICACHE_FLASH_ATTR set_servo(int8_t position) {
 void ICACHE_FLASH_ATTR servo_up() {
 	// TODO: Calibration of up angle.
 	set_servo(SERVO_UP_ANGLE);
+	servo_pos = UP;
+	notify_servo_position(UP);
 }
 
 /*
@@ -129,8 +136,16 @@ void ICACHE_FLASH_ATTR servo_up() {
 void ICACHE_FLASH_ATTR servo_down() {
 	// TODO: Calibration of down angle.
 	set_servo(SERVO_DOWN_ANGLE);
+	servo_pos = DOWN;
+	notify_servo_position(DOWN);
 }
 
+/*
+ * Returns the servo's current position.
+ */
+servo_position_t get_servo(){
+	return servo_pos;
+}
 
 /*
  * Performs the actual step of one or both stepper motors.
@@ -157,7 +172,7 @@ LOCAL void ICACHE_FLASH_ATTR step_motors(int8_t stepper1, int8_t stepper2) {
 
 	// Calculate the values for the left stepper motor.
 	if (stepper1 != 0) {
-		int8_t step = (stepper1 < 0) ? -1 : 1;
+		int8_t step = (stepper1 < 0) ? 1 : -1;
 		current_step[0] = (current_step[0] + step + STEP_SEQUENCE_COUNT) % STEP_SEQUENCE_COUNT;
 		set_mask |= step_values[0][current_step[0]];
 		clear_mask |= STEPPER_1_MASK & ~step_values[0][current_step[0]];
@@ -166,7 +181,7 @@ LOCAL void ICACHE_FLASH_ATTR step_motors(int8_t stepper1, int8_t stepper2) {
 
 	// Calculate the values for the right stepper motor.
 	if (stepper2 != 0) {
-		int8_t step = (stepper2 < 0) ? -1 : 1;
+		int8_t step = (stepper2 < 0) ? 1 : -1;
 		current_step[1] = (current_step[1] + step + STEP_SEQUENCE_COUNT) % STEP_SEQUENCE_COUNT;
 		set_mask |= step_values[1][current_step[1]];
 		clear_mask |= STEPPER_2_MASK & ~step_values[1][current_step[1]];
@@ -199,6 +214,7 @@ void ICACHE_FLASH_ATTR drive_motors(
 	int16_t right_steps,
 	uint16_t tick_count,
 	motor_callback_t *cb) {
+	os_printf("Moving left: %d, right: %d over %d ticks.\n", left_steps, right_steps, tick_count);
 	// Set the global variables.
 	total_ticks = 0;
 	current_tick = 0;
@@ -291,16 +307,16 @@ LOCAL void ICACHE_FLASH_ATTR motor_timer_cb(void *arg) {
  */
 void ICACHE_FLASH_ATTR init_motors() {
 	// Set up the GPIO function selections for stepper 1.
-    PIN_FUNC_SELECT(PERIPHS_IO_MUX_GPIO0_U, FUNC_GPIO0);
     PIN_FUNC_SELECT(PERIPHS_IO_MUX_GPIO2_U, FUNC_GPIO2);
-    PIN_FUNC_SELECT(PERIPHS_IO_MUX_GPIO4_U, FUNC_GPIO4);
-    PIN_FUNC_SELECT(PERIPHS_IO_MUX_GPIO5_U, FUNC_GPIO5);
+    PIN_FUNC_SELECT(PERIPHS_IO_MUX_MTDO_U, FUNC_GPIO15);
+    PIN_FUNC_SELECT(PERIPHS_IO_MUX_MTDI_U, FUNC_GPIO12);
+    PIN_FUNC_SELECT(PERIPHS_IO_MUX_MTMS_U, FUNC_GPIO14);
 
 	// Set up the GPIO function selections for stepper 2.
     PIN_FUNC_SELECT(PERIPHS_IO_MUX_U0RXD_U, FUNC_GPIO3);
-    PIN_FUNC_SELECT(PERIPHS_IO_MUX_MTDI_U, FUNC_GPIO12);
-    PIN_FUNC_SELECT(PERIPHS_IO_MUX_MTCK_U, FUNC_GPIO13);
-    PIN_FUNC_SELECT(PERIPHS_IO_MUX_MTMS_U, FUNC_GPIO14);
+    PIN_FUNC_SELECT(PERIPHS_IO_MUX_GPIO5_U, FUNC_GPIO5);
+    PIN_FUNC_SELECT(PERIPHS_IO_MUX_GPIO4_U, FUNC_GPIO4);
+    PIN_FUNC_SELECT(PERIPHS_IO_MUX_GPIO0_U, FUNC_GPIO0);
 
 	// Run through each step once, so that the motor is now synchronised with our state.
 	total_ticks = 0;
@@ -312,10 +328,10 @@ void ICACHE_FLASH_ATTR init_motors() {
     os_timer_setfn(&motor_timer, (os_timer_func_t *)motor_timer_cb, (void *)0);
     os_timer_arm(&motor_timer, MOTOR_TICK_INTERVAL, 1);
 
-	// Start the servo motor pulse width modulation on GPIO 15.
-	uint32_t pwm_info[][3] = {{PERIPHS_IO_MUX_MTDO_U, FUNC_GPIO15, 15}};
+	// Start the servo motor pulse width modulation on GPIO 13.
+	uint32_t pwm_info[][3] = {{PERIPHS_IO_MUX_MTCK_U, FUNC_GPIO13, 13}};
 	uint32_t servo_duty[1] = {0};
 	pwm_init(PWM_PERIOD, servo_duty, 1, pwm_info);
-	set_servo(SERVO_UP_ANGLE);
+	servo_up();
 }
 

@@ -1,5 +1,6 @@
 <html>
 <head>
+	<meta charset="utf-8">
     <title>MicroTurtle Logo</title>
 	<link rel="stylesheet" type="text/css" href="/style.css"/>
     <script type="text/javascript" src="logo.min.js"></script>
@@ -10,30 +11,27 @@
 		MicroTurtle Logo
 	</div>
     <pre id="editor">
-; Welcome!
-fd 10
-rt 90
-pu fd 100 pendown
-repeat 6 [ fd 1 rt 10 repeat 2 [ fd 2 lt 2 ] ]
-make "n 3
-repeat :n [ flurgle 3 7 make "n :n - 1 ]
-bk 88
+; Welcome To MicroTurtle Logo!
+; Common commands are shown in this sample program
+pu          ; Pen up (stop drawing)
+fd 10       ; Forward 10mm
+rt 90       ; Turn right (clockwise) 90°
+bk 20       ; Backward 20mm
+lt 90       ; Turn left (anti-clockwise) 90°
+pd          ; Pen down (start drawing)
+make "x 2   ; Set variable "x" to 2
+repeat :x [ ; Perform the following commands "x" (2) times
+  square 10 ; Call procedure "square"
+  rt 45     ; Turn right (clockwise) 45°
+]           ; End of repeated commands
+pu          ; Pen up (stop drawing)
 
-; Do something flurgly.
-to flurgle :bean :bar
-  fd 22
-  if ((:bean > 0) And (:bean < 10))
-  [
-      ; Now repeat flurgles.
-      repeat (:bean + 2) * (:bean - 1) + 1 * 2 - 3 / 4 [
-        fd 10
-        rt 12
-      ]
-  ]
-  else
-  [
-      BK 10 Lt :bean
-  ]
+; Draw a square of the size supplied
+to square :size
+	repeat 4 [
+		fd :size
+		rt 90
+	]
 end
     </pre>
     <br>
@@ -101,4 +99,7 @@ end
         }
     </script>
 </body>
+<footer>
+	© 2018 Ian Marshall
+</footer>
 </html>

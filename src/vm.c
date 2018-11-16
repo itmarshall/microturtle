@@ -10,9 +10,10 @@
 #include "mem.h"
 #include "cgiwebsocket.h"
 
-#include "udp_debug.h"
-#include "string_builder.h"
 #include "vm.h"
+#include "udp_debug.h"
+#include "http.h"
+#include "string_builder.h"
 #include "config.h"
 #include "motors.h"
 
@@ -102,7 +103,8 @@
 const uint8_t INSTR_LEN[] = {
 	0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 5,
 	1, 1, 1, 5, 1, 1, 1, 5, 1, 1, 1, 5, 1, 1, 1, 5,
-	1, 1, 1, 1, 1, 1, 5, 1, 1, 5, 5, 5};
+	1, 1, 1, 1, 1, 1, 5, 1, 1, 5, 5, 5, 1, 1, 1, 1, 
+	1};
 
 /*
  * The type for the program counter.
@@ -325,9 +327,8 @@ void ICACHE_FLASH_ATTR stop_program() {
 	// Call to execute the next instruction, which will safely free the memory.
 	execute_instruction();
 
-	// Send a message to the web socket.
-	char str[] = "{\"program\": {\"status\": \"stopped\"}}";
-	cgiWebsockBroadcast("/ws.cgi", str, os_strlen(str), WEBSOCK_FLAG_NONE);
+	// Notify any listeners.
+	notify_program_status(program_status, 0, 0);
 }
 
 /*
@@ -356,7 +357,10 @@ LOCAL void ICACHE_FLASH_ATTR vm_execute_task(os_event_t *event) {
 
 	// Check we have enough space for this instruction.
 	if ((sp->pc.idx + INSTR_LEN[sp->pc.func]) > program->functions[sp->pc.func].length) {
-		os_printf("End of function reached without RET/STOP instruction.");
+		os_printf("End of function reached without RET/STOP instruction.\n");
+		os_printf("pc: %d, instr len: %d, func: %d, func len: %d.\n",
+				sp->pc.idx, INSTR_LEN[sp->pc.func],
+				sp->pc.func, program->functions[sp->pc.func].length);
 		stop_program();
 	}
 
@@ -365,19 +369,8 @@ LOCAL void ICACHE_FLASH_ATTR vm_execute_task(os_event_t *event) {
 	debug_print("Executing instruction at function %d, index %d: %d.\n",
 			sp->pc.func, sp->pc.idx, code[0]);
 
-	// Send a message to the web socket.
-	string_builder *sb = create_string_builder(128);
-	if (sb == NULL) {
-		os_printf("Unable to create string builder for web socket reply.");
-	} else {
-		append_string_builder(sb, "{\"program\": {\"status\": \"running\", \"function\": ");
-		append_int32_string_builder(sb, sp->pc.func);
-		append_string_builder(sb, ", \"index\": ");
-		append_int32_string_builder(sb, sp->pc.idx);
-		append_string_builder(sb, "}}");
-		cgiWebsockBroadcast("/ws.cgi", sb->buf, sb->len, WEBSOCK_FLAG_NONE);
-		free_string_builder(sb);
-	}
+	// Notify any listeners.
+	notify_program_status(program_status, sp->pc.func, sp->pc.idx);
 
 	// Define variables for use within the below switch block.
 	int32_t operand1;
@@ -814,6 +807,9 @@ void ICACHE_FLASH_ATTR program_error(char *message) {
 	os_printf(message);
 	program_status = ERROR;
 	free_program(NULL);
+
+	// Notify any listeners.
+	notify_program_status(program_status, 0, 0);
 }
 
 /*

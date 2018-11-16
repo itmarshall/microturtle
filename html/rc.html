@@ -50,7 +50,7 @@ function wsMessage(e) {
 				if (values.servo.position === "up") {
 					altValue = "Down";
 				}
-				document.getElementById("penButton").value = "Move Pen " + altValue;
+				document.getElementById("penButton").innerHTML = "Move Pen " + altValue;
 			}
 		}
 	}
@@ -220,7 +220,7 @@ document.addEventListener("DOMContentLoaded", function() {
 	center = {x: ctx.canvas.width/2, y: ctx.canvas.height/2};
 	offset = {x: ctx.canvas.offsetLeft, y: ctx.canvas.offsetTop};
 	position = {x: center.x, y: center.y};
-	boundaryRadius = 80;
+	boundaryRadius = 100;
 
 	// Connect to the web socket.
 	connectWebSocket();
@@ -290,10 +290,10 @@ document.addEventListener("DOMContentLoaded", function() {
 		MicroTurtle Remote Control
 	</div>
 
-	<canvas id="remote" width="200" height="200"></canvas>
+	<canvas id="remote" width="240" height="240"></canvas>
 
 	<div>
-		<input type="button" value="Move Pen --" id="penButton" onclick="movePen()">
+		<a class="button" id="penButton" href="javascript:movePen()">Move Pen --</a>
 	</div>
 
 	<p>MicroTurtle connection status: <span id="status">N/A</span></p>

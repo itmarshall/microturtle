@@ -23,6 +23,9 @@ var penPosition = "up";
 function wsOpen(e) {
 	connected = true;
 	document.getElementById("status").innerHTML = "Connected";
+
+	// Request the current position.
+	sendToWebSocket('{"getPen":1}');
 }
 
 /*
@@ -78,9 +81,6 @@ function connectWebSocket() {
 	ws.addEventListener('close', wsClose);
 	//ws.addEventListener('error', wsError);
 	ws.addEventListener('message', wsMessage);
-
-	// Request the current position.
-	sendToWebSocket('{"getPen":1}');
 }
 
 /*

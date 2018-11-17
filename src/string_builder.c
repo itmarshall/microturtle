@@ -160,8 +160,8 @@ bool ICACHE_FLASH_ATTR append_char_string_builder(string_builder *sb, const char
     }
 
     // Add the character.
-	sb->buf[sb->len] = c;
-    sb->buf[sb->len++] = '\0';
+	sb->buf[sb->len++] = c;
+    sb->buf[sb->len] = '\0';
     return true;
 }
 

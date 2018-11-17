@@ -1159,6 +1159,7 @@ LOCAL string_builder * ICACHE_FLASH_ATTR json_read_string(int *index, char *data
 
 	// Decode the string - make sure it starts with ".
 	if (data[*index] != '"') {
+		debug_print("JRS: no starting quote.\n");
 		free_string_builder(sb);
 		return NULL;
 	}
@@ -1183,6 +1184,7 @@ LOCAL string_builder * ICACHE_FLASH_ATTR json_read_string(int *index, char *data
 					hex_count = 0;
 				default:
 					// Invalid escaped character.
+					debug_print("JRS: invalid escape character: %c.\n", data[*index]);
 					free_string_builder(sb);
 					return NULL;
 			}
@@ -1202,6 +1204,7 @@ LOCAL string_builder * ICACHE_FLASH_ATTR json_read_string(int *index, char *data
 				hex_char += data[*index] - 'a';
 			} else {
 				// Not a valid hex digit.
+				debug_print("JRS: not a valid hex digit: %c.\n", data[*index]);
 				free_string_builder(sb);
 				return NULL;
 			}
@@ -1225,6 +1228,7 @@ LOCAL string_builder * ICACHE_FLASH_ATTR json_read_string(int *index, char *data
 			append_char_string_builder(sb, data[*index]);
 		} else {
 			// This is an invalid character.
+			debug_print("JRS: Invalid character: %c.\n", data[*index]);
 			free_string_builder(sb);
 			return NULL;
 		}
@@ -1233,6 +1237,7 @@ LOCAL string_builder * ICACHE_FLASH_ATTR json_read_string(int *index, char *data
 	}
 
 	// If we get here, we ran out of space before finding the end of the string.
+	debug_print("JRS: Ran out of buffer space before reaching string end.\n");
 	free_string_builder(sb);
 	return NULL;
 }

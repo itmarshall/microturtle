@@ -17,8 +17,8 @@
 #define PWM_PERIOD 20000 // 20ms
 #define PWM_MIN 22222    // 1ms
 #define PWM_MAX 44444    // 2ms
-#define SERVO_UP_ANGLE 60
-#define SERVO_DOWN_ANGLE -60
+#define SERVO_UP_ANGLE 90
+#define SERVO_DOWN_ANGLE -90
 
 // Absolute value macro.
 #define ABS(x) (((x) < 0) ? -(x) : (x));

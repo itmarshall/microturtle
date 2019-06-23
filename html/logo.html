@@ -4,11 +4,10 @@
     <title>MicroTurtle Logo</title>
 	<link rel="stylesheet" type="text/css" href="/style.css"/>
     <script type="text/javascript" src="logo.min.js"></script>
-
 </head>
 <body>
 	<div class="banner">
-		MicroTurtle Logo
+		<a href="/">MicroTurtle</a> Logo
 	</div>
     <pre id="editor">
 ; Welcome To MicroTurtle Logo!
@@ -36,8 +35,32 @@ end
     </pre>
     <br>
 	<div class="button-bar">
-		<a class="button" href="javascript:checkProgram()">Check</a>
+		<a class="button" href="javascript:showLoadSave(false)">Load</a>
+		<a class="button" href="javascript:showLoadSave(true)">Save</a>
 		<a class="button" href="javascript:runProgram()">Run</a>
+	</div>
+	<form id="fileForm" action="/file/save.cgi" method="post">
+		<input id="slot" type="hidden" name="slot"/>
+		<input id="fileName" type="hidden" name="fileName"/>
+		<input id="fileLength" type="hidden" name="fileLength"/>
+		<input id="file" type="hidden" name="file"/>
+	</form>
+	<div id="loadDialog" class="dialog-background">
+		<div class="dialog">
+			<div class="close-x"><a class="close-x" href="javascript:closeLoadDialog()">&times;</a></div>
+			<h3>Choose a file to <span id="loadsave">load</span>:</h3>
+			<div class="file-form">
+				<label for="fileSelect">Select a file:</label>
+				<select id = "fileSelect" name="fileSelect">
+					<option value="0">0: --Unknown--</option>
+				</select>
+				<label id="filenamelabel" for="filename">File name:</label>
+				<input type="text" maxlength="32" name="filename" id="filename" value="File1.logo"/>
+				<span>&nbsp;</span>
+				<a id="loadbutton" class="button" href="javascript:loadProgram()">Load</a>
+				<a id="savebutton" class="button" href="javascript:saveProgram()">Save</a>
+			</div>
+		</div>
 	</div>
     <script src="ace.js" type="text/javascript" charset="utf-8"></script>
 	<script src="logo-mode.js" type="text/javascript" charset="utf-8"></script>
@@ -61,21 +84,6 @@ end
 			}
 		}
 
-		function checkProgram() {
-            // Compile the program to byte code.
-            var results = logo.compileProgram();
-
-            if (results.success) {
-                // Print out the compiled bytecode.
-				alert("Program is valid.");
-            } else {
-                // Something was wrong, print out the errors.
-				handleErrors(results.exceptions);
-			}
-
-			return results;
-		}
-
         function runProgram() {
             // Compile the program to byte code.
             var results = logo.compileProgram();
@@ -86,7 +94,7 @@ end
 				var xhr = new XMLHttpRequest();
 				xhr.open('POST', '/runBytecode.cgi');
 				xhr.onreadystatechange = function() {
-					if (xhr.readyState == XMLHttpRequest.DONE) {
+					if (xhr.readyState === XMLHttpRequest.DONE) {
 						console.log("Completed with status: " + xhr.status);
 					}
 				};
@@ -97,9 +105,122 @@ end
 				alert("Problems were found in the program, please fix.");
             }
         }
+
+		var loadDialog = document.getElementById("loadDialog");
+		document.getElementById("fileSelect").addEventListener("change", (event) => {
+			var txt = event.target.options[event.target.value].text;
+			txt = txt.substring(txt.indexOf(":") + 2) 
+			document.getElementById("filename").value = txt;
+		});
+
+		function showHide(id, show) {
+			document.getElementById(id).style.display = show ? "block" : "none";
+		}
+
+		function showLoadSave(isSave) {
+			getDirectory();
+			showHide("filename", isSave);
+			showHide("filenamelabel", isSave);
+			showHide("loadbutton", !isSave);
+			showHide("savebutton", isSave);
+			document.getElementById("loadsave").innerHTML = isSave ? "save" : "load";
+			if (isSave) {
+				var sel = document.getElementById("fileSelect");
+				var txt = sel.options[sel.value].text;
+				txt = txt.substring(txt.indexOf(":") + 2) 
+				document.getElementById("filename").value = txt;
+			}
+			loadDialog.style.display = "block";
+		}
+		 
+		function closeLoadDialog() {
+			loadDialog.style.display = "none";
+		}
+
+		function getDirectory() {
+			var xhr = new XMLHttpRequest();
+			xhr.open('GET', '/file/ls.cgi');
+			xhr.onreadystatechange = function() {
+				if (xhr.readyState === XMLHttpRequest.DONE) {
+					var select = document.getElementById("fileSelect");
+					select.options.length = 0;
+					var opt;
+					if (xhr.status === 200) {
+						var dir = JSON.parse(xhr.responseText);
+						for (var ii = 0; ii < dir.files.length; ii++) {
+							if (dir.files[ii].inUse) {
+								opt = new Option(ii + ": " + dir.files[ii].name, ii);
+							} else {
+								opt = new Option(ii + ": --Unused--", ii);
+							}
+							select.options[select.options.length] = opt;
+						}
+					} else {
+						for (var ii = 0; ii < 10; ii++) {
+							opt = new Option(ii + ": --Unknown--", ii);
+							select.options[select.options.length] = opt;
+						}
+					}
+				}
+			};
+			xhr.send();
+		}
+
+		function loadProgram() {
+			var number = document.getElementById("fileSelect").value;
+			var xhr = new XMLHttpRequest();
+			xhr.open('GET', "/file/load.cgi?file_number=" + number);
+			xhr.onreadystatechange = function() {
+				if (xhr.readyState === XMLHttpRequest.DONE) {
+					// Finished.
+					if (xhr.status === 200) {
+						editor.getSession().setValue(xhr.responseText, -1);
+						closeLoadDialog();
+					} else {
+						closeLoadDialog();
+						alert ("Unable to load file (" + xhr.status + "): " + xhr.statusText);
+					}
+				}
+			};
+			xhr.send();
+		}
+
+		function saveProgram() {
+			var number = document.getElementById("fileSelect").value;
+			var name = document.getElementById("filename").value;
+			var fileData = editor.getSession().getValue();
+			//var fileSize = unescape(encodeURIComponent(fileData)).length;
+			var contents = "number: " + number + "\r\n" +
+			               "name: " + name + "\r\n" +
+						   "timestamp: " + Date.now() + "\r\n" +
+						   fileData;
+			var xhr = new XMLHttpRequest();
+			xhr.onreadystatechange = function() {
+				if (xhr.readyState === XMLHttpRequest.DONE) {
+					// Finished.
+					if (xhr.status === 200) {
+						closeLoadDialog();
+						alert ("Save completed successfully.");
+					} else {
+						closeLoadDialog();
+						alert ("Unable to save file (" + xhr.status + "): " + xhr.statusText);
+					}
+				}
+			};
+			xhr.overrideMimeType("text/plain");
+			xhr.open("POST", "/file/save.cgi");
+			xhr.send(contents);
+		}
+
+		window.onclick = function(e) {
+			if (e.target === loadDialog) {
+				closeLoadDialog();
+			}
+		}
+
     </script>
 </body>
 <footer>
-	© 2018 Ian Marshall
+	© 2019 Ian Marshall
 </footer>
 </html>

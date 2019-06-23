@@ -199,7 +199,7 @@ document.addEventListener("DOMContentLoaded", function() {
 </head>
 <body>
 	<div class="banner">
-		MicroTurtle Calibration
+		<a href="/">MicroTurtle</a> Calibration
 	</div>
 
 	<h3 id="straight-header"><div id="arrow-straight" class="arrow-down">&nbsp;</div>Straight Lines</h3>
@@ -278,7 +278,7 @@ document.addEventListener("DOMContentLoaded", function() {
 	</div>
 	<h3>Current Values</h3>
 	The current values to be used for the calibration tests are:
-	<table>
+	<table class=calibrate>
 		<tr><th>&nbsp;</th><th>Left Motor</th><th>Right Motor</th></tr>
 		<tr><th>100mm Straight</th>
 			<td><input type="number" id="left-straight" min="0" step="1" value="4104"></td>
@@ -296,6 +296,6 @@ document.addEventListener("DOMContentLoaded", function() {
 	<a class="button" href="javascript:saveValues()">Save Values</a>
 </body>
 <footer>
-	© 2018 Ian Marshall
+	© 2019 Ian Marshall
 </footer>
 </html>

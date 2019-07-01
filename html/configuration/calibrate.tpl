@@ -24,7 +24,7 @@ function saveValues() {
 		"turnStepsLeft": parseInt(turnStepsLeft),
 		"turnStepsRight": parseInt(turnStepsRight)}};
 	var xhr = new XMLHttpRequest();
-	xhr.open('POST', '/calibrate/setConfiguration.cgi');
+	xhr.open('POST', '/configuration/setConfiguration.cgi');
 	xhr.onreadystatechange = function() {
 		if (xhr.readyState == XMLHttpRequest.DONE) {
 			if ((xhr.status >= 200) && (xhr.status < 300)) {
@@ -43,7 +43,7 @@ function drawLine() {
 	var straightStepsLeft = document.getElementById("left-straight").value;
 	var straightStepsRight = document.getElementById("right-straight").value;
 	var xhr = new XMLHttpRequest();
-	xhr.open('POST', '/calibrate/drawLine.cgi');
+	xhr.open('POST', '/configuration/drawLine.cgi');
 	xhr.onreadystatechange = function() {
 		if (xhr.readyState == XMLHttpRequest.DONE) {
 			var box = document.getElementById("straight-entry");
@@ -66,7 +66,7 @@ function drawTurn() {
 	var turnStepsLeft = document.getElementById("left-turn").value;
 	var turnStepsRight = document.getElementById("right-turn").value;
 	var xhr = new XMLHttpRequest();
-	xhr.open('POST', '/calibrate/drawTurn.cgi');
+	xhr.open('POST', '/configuration/drawTurn.cgi');
 	xhr.onreadystatechange = function() {
 		if (xhr.readyState == XMLHttpRequest.DONE) {
 			var box = document.getElementById("turn-entry");
@@ -278,7 +278,7 @@ document.addEventListener("DOMContentLoaded", function() {
 	</div>
 	<h3>Current Values</h3>
 	The current values to be used for the calibration tests are:
-	<table class=calibrate>
+	<table class=wideInputs>
 		<tr><th>&nbsp;</th><th>Left Motor</th><th>Right Motor</th></tr>
 		<tr><th>100mm Straight</th>
 			<td><input type="number" id="left-straight" min="0" step="1" value="4104"></td>

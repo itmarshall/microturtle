@@ -81,15 +81,16 @@ HttpdBuiltInUrl builtInUrls[]={
 	{"/file/ls.cgi", cgiListFiles, NULL},
 	{"/file/load.cgi", cgiLoadFile, NULL},
 	{"/file/save.cgi", cgiSaveFile, NULL},
-	{"/calibrate/calibrate.tpl", cgiEspFsTemplate, tpl_get_configuration},
-	{"/calibrate/drawLine.cgi", cgiCalibrateLine, NULL},
-	{"/calibrate/drawTurn.cgi", cgiCalibrateTurn, NULL},
-	{"/calibrate/setConfiguration.cgi", cgiSetConfiguration, NULL},
-	{"/net", cgiRedirect, "/net/networks.html"},
-	{"/net/", cgiRedirect, "/net/networks.html"},
-	{"/net/scan.cgi", cgiWiFiScan, NULL},
-	{"/net/status.cgi", cgiWifiStatus, NULL},
-	{"/net/connect.cgi", cgiConnectNetwork, NULL},
+	{"/configuration", cgiRedirect, "/configuration/configure.tpl"},
+	{"/configuration/", cgiRedirect, "/configuration/configure.tpl"},
+	{"/configuration/calibrate.tpl", cgiEspFsTemplate, tpl_get_configuration},
+	{"/configuration/configure.tpl", cgiEspFsTemplate, tpl_get_configuration},
+	{"/configuration/drawLine.cgi", cgiCalibrateLine, NULL},
+	{"/configuration/drawTurn.cgi", cgiCalibrateTurn, NULL},
+	{"/configuration/setConfiguration.cgi", cgiSetConfiguration, NULL},
+	{"/configuration/scan.cgi", cgiWiFiScan, NULL},
+	{"/configuration/status.cgi", cgiWifiStatus, NULL},
+	{"/configuration/connect.cgi", cgiConnectNetwork, NULL},
 	{"*", cgiEspFsHook, NULL}, //Catch-all cgi function for the filesystem
 	{NULL, NULL, NULL}
 };
@@ -862,6 +863,18 @@ LOCAL int ICACHE_FLASH_ATTR tpl_get_configuration(HttpdConnData *connData, char 
 		os_sprintf(buf, "%d", config.turn_steps_left);
 	} else if (os_strcmp(token, "turnStepsRight") == 0) {
 		os_sprintf(buf, "%d", config.turn_steps_right);
+	} else if (os_strcmp(token, "servoUpAngle") == 0) {
+		os_sprintf(buf, "%d", config.servo_up_angle);
+	} else if (os_strcmp(token, "servoDownAngle") == 0) {
+		os_sprintf(buf, "%d", config.servo_down_angle);
+	} else if (os_strcmp(token, "servoMoveSteps") == 0) {
+		os_sprintf(buf, "%d", config.servo_move_steps);
+	} else if (os_strcmp(token, "servoTickInterval") == 0) {
+		os_sprintf(buf, "%d", config.servo_tick_interval);
+	} else if (os_strcmp(token, "motorTickInterval") == 0) {
+		os_sprintf(buf, "%d", config.motor_tick_interval);
+	} else if (os_strcmp(token, "movementPause") == 0) {
+		os_sprintf(buf, "%d", config.move_pause_duration);
 	} else {
 		return HTTPD_CGI_DONE;
 	}
@@ -889,10 +902,16 @@ LOCAL int ICACHE_FLASH_ATTR cgiSetConfiguration(HttpdConnData *connData) {
 	// Convert the structure into the configuration entries.
 	// We expect the following JSON format:
 	// {"configuration":{
-	//   {"straightStepsLeft": <straight_steps_left>
-	//    "straightStepsRight": <straight_steps_right>
-	//    "turnStepsLeft": <turn_steps_left>
-	//    "turnStepsRight": <turn_steps_right>
+	//   {"straightStepsLeft": <straight_steps_left>,
+	//    "straightStepsRight": <straight_steps_right>,
+	//    "turnStepsLeft": <turn_steps_left>,
+	//    "turnStepsRight": <turn_steps_right>,
+	//    "servoUpAngle": <servo_up_angle>,           (optional)
+	//    "servoDownAngle": <servo_down_angle>,       (optional)
+	//    "servoMoveSteps": <servo_move_steps>,       (optional)
+	//    "servoTickInterval": <servo_tick_interval>, (optional)
+	//    "motorTickInterval": <motor_tick_interval>, (optional)
+	//    "movementPause": <movement_pause>           (optional)
 	//   }
 	// }}
 	// First, check we are an object.
@@ -921,18 +940,26 @@ LOCAL int ICACHE_FLASH_ATTR cgiSetConfiguration(HttpdConnData *connData) {
 				"Invalid \"configuration\" parameter - configuration command must be an object.");
 		return HTTPD_CGI_DONE;
 	}
+
+	// Get the current configuration, so unused optional parameters keep their value.
 	config_t config;
+	get_configuration(&config);
+
 	int match_index;
 	bool have_ssl = false;
 	bool have_ssr = false;
 	bool have_tsl = false;
 	bool have_tsr = false;
 	while (true) {
-		match_index = json_check_key(&index, configuration, CONFIG_LEN, 4,
-				"straightStepsLeft", "straightStepsRight", "turnStepsLeft", "turnStepsRight");
-		if ((match_index >= 0) && (match_index < 4)) {
+		match_index = json_check_key(&index, configuration, CONFIG_LEN, 10,
+				"straightStepsLeft", "straightStepsRight", "turnStepsLeft", "turnStepsRight",
+				"servoUpAngle", "servoDownAngle", "servoMoveSteps", "servoTickInterval",
+				"motorTickInterval", "movementPause");
+
+		if ((match_index >= 0) && (match_index < 10)) {
 			int32_t value = json_read_int_32(&index, configuration, CONFIG_LEN);
-			if (value < 100) {
+			if ((value < 100) && (match_index < 4)) {
+				// The step counts must be > 100 to make any kind of sense.
 				char *paramName;
 				switch(match_index) {
 					case 0:
@@ -985,6 +1012,30 @@ LOCAL int ICACHE_FLASH_ATTR cgiSetConfiguration(HttpdConnData *connData) {
 					config.turn_steps_right = value;
 					have_tsr = true;
 					break;
+				case 4:
+					// Servo up angle.
+					config.servo_up_angle = value;
+					break;
+				case 5:
+					// Servo down angle.
+					config.servo_down_angle = value;
+					break;
+				case 6:
+					// Servo move steps.
+					config.servo_move_steps = value;
+					break;
+				case 7:
+					// Servo tick interval.
+					config.servo_tick_interval = value;
+					break;
+				case 8:
+					// Motor tick interval.
+					config.motor_tick_interval = value;
+					break;
+				case 9:
+					// Servo step pause.
+					config.move_pause_duration = value;
+					break;
 			}
 		} else {
 			httpCodeReturn(connData, 400, "Bad parameter",
@@ -1009,6 +1060,7 @@ LOCAL int ICACHE_FLASH_ATTR cgiSetConfiguration(HttpdConnData *connData) {
 
 	// Store the configuration.
 	if (store_configuration(&config)) {
+		init_motor_timer();
 		httpCodeReturn(connData, 200, "OK", "OK");
 	} else {
 		httpCodeReturn(connData, 500, "Internal error", "Unable to store configuration in flash memory.");
@@ -1359,9 +1411,9 @@ LOCAL void ICACHE_FLASH_ATTR move_pen(Websock *ws, char *data, int len, int inde
 		return;
 	}
 	if (string_builder_strncmp(sb, "up", 3) == 0) {
-		servo_up();
+		servo_up(NULL);
 	} else if (string_builder_strncmp(sb, "down", 5) == 0) {
-		servo_down();
+		servo_down(NULL);
 	}
 
 	free_string_builder(sb);
@@ -1689,7 +1741,7 @@ LOCAL int ICACHE_FLASH_ATTR json_check_key(int *index, char *data, int max_index
 	va_end(ap);
 	if (match_index == -1) {
 		// This key doesn't match any of the supplied options.
-		debug_print("Key does not match any option.\n");
+		debug_print("Key \"%s\"does not match any option.\n", data[new_index]);
 		return -1;
 	}
 

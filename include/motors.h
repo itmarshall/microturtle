@@ -16,13 +16,19 @@ typedef enum servo_position_t {UP, DOWN} servo_position_t;
 
 /*
  * Sets the servo to the "up" position.
+ *
+ * Parameters:
+ * cb - the call-back function to be invoked when the servo has finished moving.
  */
-void servo_up();
+void servo_up(motor_callback_t *cb);
 
 /*
  * Sets the servo to the "down" position.
+ *
+ * Parameters:
+ * cb - the call-back function to be invoked when the servo has finished moving.
  */
-void servo_down();
+void servo_down(motor_callback_t *cb);
 
 /*
  * Returns the servo's current position.
@@ -49,6 +55,11 @@ void drive_motors(
         int16_t right_steps,
         uint16_t tick_count,
         motor_callback_t *cb);
+
+/*
+ * (Re)initialises the motor timer.
+ */
+void ICACHE_FLASH_ATTR init_motor_timer();
 
 /*
  * Initialises the GPIO values for the stepper motors.

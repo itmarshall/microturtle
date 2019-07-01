@@ -13,21 +13,17 @@
 
 #include "http.h"
 #include "motors.h"
+#include "config.h"
 
 #define PWM_PERIOD 20000 // 20ms
 #define PWM_MIN 22222    // 1ms
 #define PWM_MAX 44444    // 2ms
-#define SERVO_UP_ANGLE 90
-#define SERVO_DOWN_ANGLE -90
 
 // Absolute value macro.
 #define ABS(x) (((x) < 0) ? -(x) : (x));
 
 // The number of stepper motors that this program is using.
 #define STEPPER_MOTOR_COUNT 2
-
-// The number of milliseconds per tick of the motor timer.
-#define MOTOR_TICK_INTERVAL 1
 
 // The maximum number of timer ticks that must pass without movement before the motors are turned 
 // off to save energy. This value is equal to 5 seconds.
@@ -61,8 +57,26 @@ LOCAL int32_t next_total_ticks = 0;
 // The number of steps of each stepper motor for the next motor control sequence.
 LOCAL int32_t next_steps[STEPPER_MOTOR_COUNT] = {0, 0};
 
+// The callback function to call when the servo's movement sequence is complete.
+LOCAL motor_callback_t *servo_cb = NULL;
+
 // The timer used for moving the stepper motors.
 LOCAL os_timer_t motor_timer;
+
+// The timer used for moving the servo motor.
+LOCAL os_timer_t servo_timer;
+
+// The current angle of the servo.
+LOCAL int8_t servo_angle;
+
+// The angle the servo is moving towards.
+LOCAL int8_t destination_angle;
+
+// The current step for the servo movement.
+LOCAL uint8_t servo_step;
+
+// The size of each step of the servo movement.
+LOCAL int8_t servo_step_size;
 
 // The current position of the servo.
 LOCAL servo_position_t servo_pos; 
@@ -103,29 +117,73 @@ LOCAL int8_t current_step[STEPPER_MOTOR_COUNT] = {0, 0};
 /*
  * Sets the servo's position, in the range of [-90 90]. Angle is in degrees.
  */
-LOCAL void ICACHE_FLASH_ATTR set_servo(int8_t position) {
+LOCAL void ICACHE_FLASH_ATTR set_servo(int8_t position, motor_callback_t *cb) {
+	// Store the callback.
+	servo_cb = cb;
+
 	// Ensure the position is in the range of [-90 90] degrees.
 	if (position < -90) {
 		position = -90;
 	} else if (position > 90) {
 		position = 90;
 	}
+
 	os_printf("Setting servo angle to %d.\n", position);
+	destination_angle = position;
+
+	// Calculate the size of each step.
+	uint8_t steps = get_servo_move_steps();
+	os_printf("steps = %d\n", steps);
+	if (steps <= 0) {
+		steps = 1;
+	}
+	servo_step_size = (destination_angle - servo_angle) / steps;
+	servo_step = 0;
+
+	// Start the servo timer.
+	uint32_t interval = get_servo_tick_interval();
+	if (get_servo_move_steps() == 1) {
+		// Minimal step time as there is only one step.
+		interval = 1;
+	}
+	//os_printf("Servo tick interval = %ld.\n", interval);
+	os_timer_disarm(&servo_timer);
+    os_timer_arm(&servo_timer, interval, 1);
+}
+
+LOCAL void ICACHE_FLASH_ATTR servo_timer_cb(void *arg) {
+	// Update the angle.
+	servo_angle += servo_step_size;
+	servo_step++;
+
+	if (servo_step >= get_servo_move_steps()) {
+		// Ensure the finishing angle is the destination angle to remove any rounding errors.
+		servo_angle = destination_angle;
+	}
+	os_printf("In servo timer callback for step %d, angle=%d.\n", servo_step, servo_angle);
 
 	// Calculate the duty cycle to keep it between 1ms (-90 degs) and 2ms (+90 degs).
-	uint32_t pwm_duty = ((uint32_t)(position + 90) * (PWM_MAX - PWM_MIN) / 180) + PWM_MIN;
+	uint32_t pwm_duty = ((uint32_t)(servo_angle + 90) * (PWM_MAX - PWM_MIN) / 180) + PWM_MIN;
 
 	// Set the new PWM duty cycle.
 	pwm_set_duty(pwm_duty, 0);
 	pwm_start();
+
+	if (servo_step >= get_servo_move_steps()) {
+		// We're finished with the servo movement steps.
+		os_timer_disarm(&servo_timer);
+		if (servo_cb != NULL) {
+			// Invoke the callback function.
+			servo_cb();
+		}
+	}
 }
 
 /*
  * Sets the servo to the "up" position.
  */
-void ICACHE_FLASH_ATTR servo_up() {
-	// TODO: Calibration of up angle.
-	set_servo(SERVO_UP_ANGLE);
+void ICACHE_FLASH_ATTR servo_up(motor_callback_t *cb) {
+	set_servo(get_servo_up_angle(), cb);
 	servo_pos = UP;
 	notify_servo_position(UP);
 }
@@ -133,9 +191,8 @@ void ICACHE_FLASH_ATTR servo_up() {
 /*
  * Sets the servo to the "down" position.
  */
-void ICACHE_FLASH_ATTR servo_down() {
-	// TODO: Calibration of down angle.
-	set_servo(SERVO_DOWN_ANGLE);
+void ICACHE_FLASH_ATTR servo_down(motor_callback_t *cb) {
+	set_servo(get_servo_down_angle(), cb);
 	servo_pos = DOWN;
 	notify_servo_position(DOWN);
 }
@@ -303,6 +360,19 @@ LOCAL void ICACHE_FLASH_ATTR motor_timer_cb(void *arg) {
 }
 
 /*
+ * (Re)initialises the motor timer.
+ */
+void ICACHE_FLASH_ATTR init_motor_timer() {
+	uint32_t interval = get_motor_tick_interval();
+	if (interval <= 0) {
+		interval = 1;
+	}
+    os_timer_disarm(&motor_timer);
+    os_timer_setfn(&motor_timer, (os_timer_func_t *)motor_timer_cb, (void *)0);
+    os_timer_arm(&motor_timer, interval, 1);
+}
+
+/*
  * Initialises the motor control system.
  */
 void ICACHE_FLASH_ATTR init_motors() {
@@ -323,15 +393,17 @@ void ICACHE_FLASH_ATTR init_motors() {
 	next_total_ticks = 0;
 	drive_motors(STEP_SEQUENCE_COUNT, STEP_SEQUENCE_COUNT, STEP_SEQUENCE_COUNT, NULL);
 
-	// Start the timer.
-    os_timer_disarm(&motor_timer);
-    os_timer_setfn(&motor_timer, (os_timer_func_t *)motor_timer_cb, (void *)0);
-    os_timer_arm(&motor_timer, MOTOR_TICK_INTERVAL, 1);
+	// Start the motor timer.
+	init_motor_timer();
+
+	// Prepare, but do not start the servo timer.
+	os_timer_disarm(&servo_timer);
+	os_timer_setfn(&servo_timer, (os_timer_func_t *)servo_timer_cb, (void *)0);
 
 	// Start the servo motor pulse width modulation on GPIO 13.
 	uint32_t pwm_info[][3] = {{PERIPHS_IO_MUX_MTCK_U, FUNC_GPIO13, 13}};
 	uint32_t servo_duty[1] = {0};
 	pwm_init(PWM_PERIOD, servo_duty, 1, pwm_info);
-	servo_up();
+	servo_up(NULL);
 }
 

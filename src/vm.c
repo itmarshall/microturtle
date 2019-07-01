@@ -45,10 +45,6 @@
 // The queue length for the task used to execute the next program instruction.
 #define EXEC_INSTR_QUEUE_LEN 2
 
-// The number of milliseconds that the microturtle will wait after a motor movement before executing
-// the next instruction.
-#define MOVE_PAUSE_DURATION 200
-
 // Byte code instruction definitions
 #define INSTR_FD         1
 #define INSTR_BK         2
@@ -460,15 +456,13 @@ LOCAL void ICACHE_FLASH_ATTR vm_execute_task(os_event_t *event) {
 			break;
 		case INSTR_PU:
 			// Raise the pen, and wait for it to finish moving.
-			servo_up();
+			servo_up(end_move_pause);
 			defer_next_instr = true;
-			end_move_pause();
 			break;
 		case INSTR_PD:
 			// Lower the pen, and wait for it to finish moving.
-			servo_down();
+			servo_down(end_move_pause);
 			defer_next_instr = true;
-			end_move_pause();
 			break;
 		case INSTR_IADD:
 			// Add the topmost two values on the stack and add it to the stack.
@@ -818,7 +812,7 @@ void ICACHE_FLASH_ATTR program_error(char *message) {
  */
 void ICACHE_FLASH_ATTR end_move_pause() {
 	// Trigger the post movement pause timer.
-    os_timer_arm(&move_pause_timer, MOVE_PAUSE_DURATION, false);
+    os_timer_arm(&move_pause_timer, get_move_pause_duration(), false);
 }
 
 /*

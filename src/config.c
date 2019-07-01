@@ -22,6 +22,24 @@ static uint32_t const DEFAULT_STRAIGHT_STEPS = 1729;
 // The default value to use for the number of steps for each motor to turn the turtle 90 degrees.
 static uint32_t const DEFAULT_TURN_STEPS = 2052;
 
+// The default value to use for the angle of the server in the pen up position.
+static int8_t const DEFAULT_SERVO_UP_ANGLE = 90;
+
+// The default value to use for the angle of the server in the pen down position.
+static int8_t const DEFAULT_SERVO_DOWN_ANGLE = -90;
+
+// The default value to use for the number of steps for a servo moving between the up and down positions.
+static uint8_t const DEFAULT_SERVO_MOVE_STEPS = 1;
+
+// The default value to use for the number of ms in the interval of the servo timer.
+static uint8_t const DEFAULT_SERVO_TICK_INTERVAL = 1;
+
+// The default value to use for the number of ms in the interval of the stepper motor timer.
+static uint8_t const DEFAULT_MOTOR_TICK_INTERVAL = 1;
+
+// The default value to use for the number of ms to pause after a motor movement.
+static uint32_t const DEFAULT_MOVE_PAUSE_DURATION = 200;
+
 /*
  * Structure for the physical storage of configuration parameters in the flash. This includes a "magic" value that is
  * also stored in the flash to test if the configuration is stored, or if the flash is simply uninitialised, or random.
@@ -37,7 +55,7 @@ LOCAL config_t current_config;
  * Retrieves the values for the number of steps for each motor to move 100mm. The values are written to the supplied
  * pointers.
  */
-void ICACHE_FLASH_ATTR get_straight_steps(uint32_t *left, uint32_t *right) {
+void get_straight_steps(uint32_t *left, uint32_t *right) {
 	*left = current_config.straight_steps_left;
 	*right = current_config.straight_steps_right;
 }
@@ -46,9 +64,51 @@ void ICACHE_FLASH_ATTR get_straight_steps(uint32_t *left, uint32_t *right) {
  * Retrieves the values for the number of steps for each motor to turn the robot by 90 degrees.
  * The values are written to the supplied pointers.
  */
-void ICACHE_FLASH_ATTR get_turn_steps(uint32_t *left, uint32_t *right) {
+void get_turn_steps(uint32_t *left, uint32_t *right) {
 	*left = current_config.turn_steps_left;
 	*right = current_config.turn_steps_right;
+}
+
+/*
+ * Retrieves the value for the servo up angle.
+ */
+int8_t get_servo_up_angle() {
+	return current_config.servo_up_angle;
+}
+
+/*
+ * Retrieves the value for the servo down angle.
+ */
+int8_t get_servo_down_angle() {
+	return current_config.servo_down_angle;
+}
+
+/*
+ * Retrieves the value for the servo movement steps.
+ */
+uint8_t get_servo_move_steps() {
+	return current_config.servo_move_steps;
+}
+
+/*
+ * Retrieves the value for the servo tick interval.
+ */
+uint32_t get_servo_tick_interval() {
+	return current_config.servo_tick_interval;
+}
+
+/*
+ * Retrieves the value for the motor tick interval.
+ */
+uint32_t get_motor_tick_interval() {
+	return current_config.motor_tick_interval;
+}
+
+/*
+ * Retrieves the value for the move pause duration.
+ */
+uint32_t get_move_pause_duration() {
+	return current_config.move_pause_duration;
 }
 
 /*
@@ -67,6 +127,14 @@ bool ICACHE_FLASH_ATTR store_configuration(config_t *config) {
 		os_printf("NULL configuration passed to store_configuration.\n");
 		return false;
 	}
+
+	/*
+	os_printf("Storing values for straight steps - left: %d, right: %d, ",
+			config->straight_steps_left, config->straight_steps_right);
+	os_printf("turn steps - left: %d, right: %d.\n",
+			config->turn_steps_left, config->turn_steps_right);
+	os_printf("sizes: config_t: %d, config_storage_t: %d.\n", sizeof(config_t), sizeof(config_storage_t));
+	*/
 
 	// Store the values in flash memory.
 	config_storage_t storage;
@@ -101,9 +169,20 @@ void ICACHE_FLASH_ATTR init_config() {
 		current_config.straight_steps_right = DEFAULT_STRAIGHT_STEPS;
 		current_config.turn_steps_left = DEFAULT_TURN_STEPS;
 		current_config.turn_steps_right = DEFAULT_TURN_STEPS;
+		current_config.servo_up_angle = DEFAULT_SERVO_UP_ANGLE;
+		current_config.servo_down_angle = DEFAULT_SERVO_DOWN_ANGLE;
+		current_config.servo_move_steps = DEFAULT_SERVO_MOVE_STEPS;
+		current_config.servo_tick_interval = DEFAULT_SERVO_TICK_INTERVAL;
+		current_config.motor_tick_interval = DEFAULT_MOTOR_TICK_INTERVAL;
+		current_config.move_pause_duration = DEFAULT_MOVE_PAUSE_DURATION;
 	} else {
 		// Store the flash configuration in RAM for fast/easy access.
 		os_memcpy(&current_config, &storage.config, sizeof(config_t));
 	}
+
+	os_printf("Straight steps - left: %d, right: %d.\n",
+			current_config.straight_steps_left, current_config.straight_steps_right);
+	os_printf("Turn steps - left: %d, right: %d.\n",
+			current_config.turn_steps_left, current_config.turn_steps_right);
 }
 

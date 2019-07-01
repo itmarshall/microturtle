@@ -224,7 +224,11 @@ a.close-x {
 	float: left;
 }
 
-.calibrate input[type="number"] {
+.wideInputs input[type="number"] {
 	width: 100%;
 }
 
+.bandedTable tr:nth-child(even) {
+	background-color: #f2f8ff;
+}
+.

@@ -37,6 +37,9 @@ static uint8_t const DEFAULT_SERVO_TICK_INTERVAL = 1;
 // The default value to use for the number of ms in the interval of the stepper motor timer.
 static uint8_t const DEFAULT_MOTOR_TICK_INTERVAL = 1;
 
+// The default value to use for the number of ticks in the acceleration sequence.
+static uint8_t const DEFAULT_ACCELERATION_DURATION = 200;
+
 // The default value to use for the number of ms to pause after a motor movement.
 static uint32_t const DEFAULT_MOVE_PAUSE_DURATION = 200;
 
@@ -102,6 +105,13 @@ uint32_t get_servo_tick_interval() {
  */
 uint32_t get_motor_tick_interval() {
 	return current_config.motor_tick_interval;
+}
+
+/*
+ * Retrieves the value for the acceleration duration.
+ */
+uint32_t get_acceleration_duration() {
+	return current_config.acceleration_duration;
 }
 
 /*
@@ -174,6 +184,7 @@ void ICACHE_FLASH_ATTR init_config() {
 		current_config.servo_move_steps = DEFAULT_SERVO_MOVE_STEPS;
 		current_config.servo_tick_interval = DEFAULT_SERVO_TICK_INTERVAL;
 		current_config.motor_tick_interval = DEFAULT_MOTOR_TICK_INTERVAL;
+		current_config.acceleration_duration = DEFAULT_ACCELERATION_DURATION;
 		current_config.move_pause_duration = DEFAULT_MOVE_PAUSE_DURATION;
 	} else {
 		// Store the flash configuration in RAM for fast/easy access.

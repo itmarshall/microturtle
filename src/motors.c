@@ -20,7 +20,7 @@
 #define PWM_MAX 44444    // 2ms
 
 // Absolute value macro.
-#define ABS(x) (((x) < 0) ? -(x) : (x));
+#define ABS(x) (((x) < 0) ? -(x) : (x))
 
 // The number of stepper motors that this program is using.
 #define STEPPER_MOTOR_COUNT 2
@@ -39,14 +39,46 @@ typedef struct {
 	uint8_t direction;
 } tick_data_t;
 
+// Structure used to hold phase information for acceleration.
+// This data is per-movement sequence.
+typedef struct {
+	uint32_t accel_limit;     // The actual acceleration duration for short runs.
+	uint32_t accel_duration;  // The duration the acceleration curve is over.
+	uint32_t cruise_duration; // The duration the cruise runs for.
+	uint32_t phase_tick;      // The current tick in this phase.
+	float last_position;     // The position of the last step for this phase.
+} phase_data_t;
+
+// The various phases that a motor movement can go through.
+typedef enum {
+	STATIONARY,
+	ACCEL_1,
+	ACCEL_2,
+	CRUISING,
+	DECEL_1,
+	DECEL_2
+} phases_t;
+
 // Stepper data used in the control of motor movement.
 LOCAL tick_data_t stepper_data[STEPPER_MOTOR_COUNT];
+
+// Phase information used in the control of accelerated motor movement.
+LOCAL phase_data_t phase_data;
+
+// The current phase of the accelerated movement.
+LOCAL phases_t current_phase = STATIONARY;
 
 // The current tick that the motor control is up to.
 LOCAL uint32_t current_tick = 0;
 
-// The total number of ticks that the motor control's current sequence.
+// The total number of ticks in the motor control's current sequence.
 LOCAL uint32_t total_ticks = 0;
+
+// The total number of steps in the motor control's current sequence.
+LOCAL uint32_t total_steps = 0;
+
+// Flag used to enable/disable motor acceleration for this sequence.
+LOCAL bool acceleration_active = false;
 
 // The callback function to call when the motor control's sequence is complete.
 LOCAL motor_callback_t *motor_cb = NULL;
@@ -113,6 +145,11 @@ LOCAL uint32_t step_values[STEPPER_MOTOR_COUNT][STEP_SEQUENCE_COUNT] = {
 
 // The current step in the step sequence for each motor.
 LOCAL int8_t current_step[STEPPER_MOTOR_COUNT] = {0, 0};
+
+// Calculates the maximum value of two 16-bit integers.
+LOCAL int16_t ICACHE_FLASH_ATTR max16(int16_t a, int16_t b) {
+	return (a < b) ? b : a;
+}
 
 /*
  * Sets the servo's position, in the range of [-90 90]. Angle is in degrees.
@@ -261,49 +298,114 @@ void ICACHE_FLASH_ATTR stop_motors() {
  * Instructs the stepper motors to move a set amount.
  *
  * Parameters:
- * left_steps - the number of steps for the left stepper motor to advance
+ * left_steps  - the number of steps for the left stepper motor to advance
  * right_steps - the number of steps for the right stepper motor to advance
- * tick_count - the number of ticks over which the left and right steppers are moving.
- * cb - the call-back function to be invoked when the tick_count has been reached.
+ * tick_count  - the number of ticks over which the left and right steppers are moving
+                 This is not used when acceleration is enabled
+ * accelerate  - flag set when acceleration is required
+ * cb          - the call-back function to be invoked when the steps have been completed.
  */
 void ICACHE_FLASH_ATTR drive_motors(
 	int16_t left_steps, 
 	int16_t right_steps,
 	uint16_t tick_count,
+	bool accelerate,
 	motor_callback_t *cb) {
-	os_printf("Moving left: %d, right: %d over %d ticks.\n", left_steps, right_steps, tick_count);
+
 	// Set the global variables.
 	total_ticks = 0;
+	total_steps = 0;
 	current_tick = 0;
+	current_phase = accelerate ? ACCEL_1 : CRUISING;
+	acceleration_active = accelerate;
 	motor_cb = cb;
 
-	if ((tick_count == 0) || ((left_steps == 0) && (right_steps == 0))) {
+	//os_printf("drive_motors, l=%d, r=%d, tc=%d, a=%d.\n", left_steps, right_steps, tick_count, accelerate);
+	if ((left_steps == 0) && (right_steps == 0)) {
 		// There's nothing to do.
 		return;
 	}
 
+	// Set the phases.
+	uint32_t steps = max16(ABS(left_steps), ABS(right_steps));
+	if (accelerate) {
+		phase_data.accel_limit = get_acceleration_duration();
+		phase_data.accel_duration = phase_data.accel_limit / 2;
+		phase_data.cruise_duration = steps - (2 * phase_data.accel_duration);
+		phase_data.phase_tick = 0;
+		os_printf("al=%d, ad=%d, cd=%d.\n", phase_data.accel_limit, phase_data.accel_duration, phase_data.cruise_duration);
+		if (phase_data.accel_duration > (steps/2)) {
+			// We don't finish accelerating before it's time to decelerate.
+			uint32_t target = steps / 2;
+			uint32_t left = 0;
+			uint32_t right = get_acceleration_duration();
+			uint32_t mid;
+			float crossover = phase_data.accel_duration;
+			crossover = (crossover * crossover * crossover) /
+				(6 * phase_data.accel_duration * phase_data.accel_duration);
+			float m_value;
+			os_printf("a_d: %d, st: %d, t: %d.\n",
+					phase_data.accel_duration, steps, target);
+			while (left < right) {
+				mid = (left + right) / 2;
+				m_value = (float)mid;
+				if (mid <= phase_data.accel_duration) {
+					m_value = (m_value * m_value * m_value) /
+						(6 * phase_data.accel_duration * phase_data.accel_duration);
+				} else {
+					m_value -= phase_data.accel_duration;
+					m_value = -((m_value * m_value * m_value) / 
+						(6 * phase_data.accel_duration * phase_data.accel_duration)) +
+						((m_value * m_value) / (2 * phase_data.accel_duration)) +
+						(m_value / 2) +
+						crossover;
+				}
+				os_printf("left=%d, right=%d, mid=%d, m_v=%.4lf.\n", 
+						left, right, mid, m_value);
+				if (((uint32_t)m_value) < target) {
+					left = mid + 1;
+				} else {
+					right = mid;
+				}
+			}
+			mid = left;
+			phase_data.accel_limit = mid;
+			phase_data.cruise_duration = steps - (2*target);
+			os_printf("mid=%d, a_l=%d, c_d=%d.\n",
+					mid, phase_data.accel_limit, phase_data.cruise_duration);
+		}
+	} else {
+		phase_data.accel_limit = 0;
+		phase_data.accel_duration = 0;
+		phase_data.cruise_duration = tick_count;
+		phase_data.phase_tick = 0;
+	}
+
 	// Set the per-stepper values, first for the left stepper.
 	stepper_data[0].steps = ABS(left_steps);
-	stepper_data[0].d = (2 * left_steps) - tick_count;
+	stepper_data[0].d = (2 * ABS(left_steps)) - (accelerate ? steps : tick_count);
 	stepper_data[0].step = 0;
 	stepper_data[0].last_step = -1;
 	stepper_data[0].direction = (left_steps > 0) ? 1 : -1;
 
 	// Now for the right stepper
 	stepper_data[1].steps = ABS(right_steps);
-	stepper_data[1].d = (2 * right_steps) - tick_count;
+	stepper_data[1].d = (2 * ABS(right_steps)) - (accelerate ? steps : tick_count);
 	stepper_data[1].step = 0;
 	stepper_data[1].last_step = -1;
 	stepper_data[1].direction = (right_steps > 0) ? 1 : -1;
 
-	// Finally, set the total ticks, and we're good to go.
-	total_ticks = tick_count;
+	// Finally, set the totals, and we're good to go.
+	total_steps = steps;
+	if (accelerate) {
+		total_ticks = 2*phase_data.accel_limit + phase_data.cruise_duration;
+	} else {
+		total_ticks = tick_count;
+	}
 }
 
 /*
  * Timer callback used to determine if any stepper needs to move to the next step.
- * The algorithm to choose whether to initiate a step is based on Bresenham's line 
- * algorithm.
  */
 LOCAL void ICACHE_FLASH_ATTR motor_timer_cb(void *arg) {
 	// Count of the number of idle cycles for the motors.
@@ -315,6 +417,7 @@ LOCAL void ICACHE_FLASH_ATTR motor_timer_cb(void *arg) {
 		if (++idle_count > MAX_IDLE_COUNT) {
 			// The motors have been idle for too long, turn them off to save electricity.
 			stop_motors();
+			idle_count = 0;
 		}
 		return;
 	} else {
@@ -322,36 +425,169 @@ LOCAL void ICACHE_FLASH_ATTR motor_timer_cb(void *arg) {
 		idle_count = 0;
 	}
 
-	// Determine whether either/both of the motors should be stepping this tick.
-	bool steps[] = {false, false};
-	for (int ii = 0; ii <= 1; ii ++) {
-		if (stepper_data[ii].steps <= 0) {
-			// There's nothing to do for this motor.
-			continue;
-		}
-		if (stepper_data[ii].step != stepper_data[ii].last_step) {
-			steps[ii] = true;
-			stepper_data[ii].last_step = stepper_data[ii].step;
-		}
-
-		if (stepper_data[ii].d > 0) {
-			stepper_data[ii].step++;
-			stepper_data[ii].d -= 2*total_ticks;
-		}
-		stepper_data[ii].d += 2*stepper_data[ii].steps;
-	}
-
-	// Step the appropriate motor(s).
-	if ((steps[0]) || (steps[1])) {
-		step_motors((steps[0]) ? stepper_data[0].direction : 0,
-				    (steps[1]) ? stepper_data[1].direction : 0);
-	}
-
-	// Move the values ready for the next tick.
+	float position;
+	float tick = ++phase_data.phase_tick;
 	current_tick++;
-	if (current_tick >= total_ticks) {
-		// We have now finished our ticks.
+	bool reset = false;
+	bool complete = false;
+	switch (current_phase) {
+		case ACCEL_1:
+			position = (tick * tick * tick) /
+				(6 * phase_data.accel_duration * phase_data.accel_duration);
+			if (tick >= phase_data.accel_limit) {
+				// We've passed the acceleration limit, skip ahead.
+				if (phase_data.cruise_duration > 0) {
+					current_phase = CRUISING;
+				} else {
+					current_phase = DECEL_1;
+				}
+				reset = true;
+			} else if (tick >= phase_data.accel_duration) {
+				// Move to the next phase of the movement.
+				current_phase = ACCEL_2;
+				reset = true;
+			}
+			break;
+		case ACCEL_2:
+			position = -((tick * tick * tick) / 
+					(6 * phase_data.accel_duration * phase_data.accel_duration)) +
+				((tick * tick) / (2 * phase_data.accel_duration)) +
+				(tick / 2);
+			//os_printf("p=%.4lf, t=%.2lf, a_d=%d, a_l=%d.\n",
+			//		position, tick, phase_data.accel_duration, phase_data.accel_limit);
+			if ((tick + phase_data.accel_duration) >= phase_data.accel_limit) {
+				// We've passed the acceleration limit, skip ahead.
+				if (phase_data.cruise_duration > 0) {
+					current_phase = CRUISING;
+				} else {
+					current_phase = DECEL_1;
+				}
+				reset = true;
+			} else if (tick >= phase_data.accel_limit) {
+				// Move to the next phase of the movement.
+				current_phase = CRUISING;
+				reset = true;
+			}
+			break;
+		case CRUISING:
+			position = phase_data.last_position + 1;
+			if (tick >= phase_data.cruise_duration) {
+				// Move to the next phase of the movement.
+				if (!acceleration_active) {
+					// There is no next phase without acceleration.
+					complete = true;
+					current_phase = STATIONARY;
+				} else {
+					current_phase = DECEL_1;
+				}
+				reset = true;
+			}
+			break;
+		case DECEL_1:
+			position = -((tick * tick * tick) /
+					(6 * phase_data.accel_duration * phase_data.accel_duration)) +
+				tick;
+			if (tick >= phase_data.accel_duration) {
+				// Move to the next phase of the movement.
+				current_phase = DECEL_2;
+				reset = true;
+			}
+			break;
+		case DECEL_2:
+			position = (tick * tick * tick) /
+				(6 * phase_data.accel_duration * phase_data.accel_duration) -
+				((tick * tick) / (2 * phase_data.accel_duration)) + 
+				(tick / 2);
+			if (tick >= phase_data.accel_duration) {
+				// We are now done.
+				complete = true;
+				current_phase = STATIONARY;
+				reset = true;
+			}
+			break;
+		defaule:
+			// We shouldn't get here.
+			current_phase = STATIONARY;
+			reset = true;
+	}
+
+	// See if we need to step.
+	if ((position - phase_data.last_position) >= 1.0) {
+		phase_data.last_position += 1.0;
+
+		// Determine whether which of the motors should be stepping this tick.
+		bool steps[] = {false, false};
+		for (int ii = 0; ii <= 1; ii ++) {
+			/*
+			if (ii == 0) {
+				printf("%d: steps=%d, d=%d, step=%d, l_s=%d, dir=%d.\n",
+						ii,
+						stepper_data[ii].steps,
+						stepper_data[ii].d,
+						stepper_data[ii].step,
+						stepper_data[ii].last_step,
+						stepper_data[ii].direction);
+			}
+			*/
+			if (stepper_data[ii].steps <= 0) {
+				// There's nothing to do for this motor.
+				continue;
+			}
+			if (stepper_data[ii].step != stepper_data[ii].last_step) {
+				steps[ii] = true;
+				stepper_data[ii].last_step = stepper_data[ii].step;
+			}
+
+			if (stepper_data[ii].d > 0) {
+				stepper_data[ii].step++;
+				stepper_data[ii].d -= 2*total_steps;
+			}
+			stepper_data[ii].d += 2*stepper_data[ii].steps;
+		}
+
+		// Step the appropriate motor(s).
+		if ((steps[0]) || (steps[1])) {
+			step_motors((steps[0]) ? stepper_data[0].direction : 0,
+						(steps[1]) ? stepper_data[1].direction : 0);
+		}
+	}
+
+	// If we're at the end of a phase, we reset the counters.
+	if (reset) {
+		phase_data.phase_tick = 0;
+		if (phase_data.accel_limit != (2*phase_data.accel_duration)) {
+			if (current_phase == DECEL_1) {
+				float correction;
+				if (phase_data.accel_limit <= phase_data.accel_duration) {
+					// We need to skip the deceleration 1 phase.
+					current_phase = DECEL_2;
+					phase_data.phase_tick = phase_data.accel_duration - phase_data.accel_limit;
+					correction = phase_data.phase_tick;
+					correction = (correction * correction * correction) /
+						(6 * phase_data.accel_duration * phase_data.accel_duration) -
+						((correction * correction) / (2 * phase_data.accel_duration)) + 
+						(correction / 2);
+				} else {
+					// Count the ticks remaining from the end of the phase.
+					phase_data.phase_tick = (2*phase_data.accel_duration) - phase_data.accel_limit;
+					correction = phase_data.phase_tick;
+					correction = -((correction * correction * correction) /
+							(6 * phase_data.accel_duration * phase_data.accel_duration)) +
+							correction;
+				}
+				phase_data.last_position += correction;
+			} else if ((current_phase == DECEL_2) &&
+					(phase_data.accel_limit < phase_data.accel_duration)) {
+				// Count the ticks remaining from the end of the phase.
+				phase_data.phase_tick = phase_data.accel_duration - phase_data.accel_limit;
+			}
+		}
+		phase_data.last_position -= position;
+	}
+
+	if (complete) {
 		total_ticks = 0;
+		total_steps = 0;
 		if (motor_cb != NULL) {
 			// Invoke the callback function.
 			motor_cb();
@@ -391,7 +627,7 @@ void ICACHE_FLASH_ATTR init_motors() {
 	// Run through each step once, so that the motor is now synchronised with our state.
 	total_ticks = 0;
 	next_total_ticks = 0;
-	drive_motors(STEP_SEQUENCE_COUNT, STEP_SEQUENCE_COUNT, STEP_SEQUENCE_COUNT, NULL);
+	drive_motors(STEP_SEQUENCE_COUNT, STEP_SEQUENCE_COUNT, STEP_SEQUENCE_COUNT, false, NULL);
 
 	// Start the motor timer.
 	init_motor_timer();

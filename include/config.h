@@ -12,16 +12,17 @@
  * Configuration structure holding the parameters that are stored in flash and returned to users.
  */
 typedef struct config_t {
-	uint32_t straight_steps_left;  // The number of steps for the left motor to move 100mm.
-	uint32_t straight_steps_right; // The number of steps for the right motor to move 100mm.
-	uint32_t turn_steps_left;      // The number of steps for the left motor to turn 90 degrees.
-	uint32_t turn_steps_right;     // The number of steps for the right motor to turn 90 degrees.
-	int8_t servo_up_angle;         // The angle used for when the servo is holding the pen up.
-	int8_t servo_down_angle;       // The angle used for when the servo is holding the pen down.
-	uint8_t servo_move_steps;      // The number of steps the servo moves through between up and down.
-	uint32_t servo_tick_interval;  // The number of ms in each interval of the servo motor timer.
-	uint32_t motor_tick_interval;  // The number of ms in each interval of the stepper motor timer.
-	uint32_t move_pause_duration;  // The number of ms to pause after a motor movement.
+	uint32_t straight_steps_left;   // The number of steps for the left motor to move 100mm.
+	uint32_t straight_steps_right;  // The number of steps for the right motor to move 100mm.
+	uint32_t turn_steps_left;       // The number of steps for the left motor to turn 90 degrees.
+	uint32_t turn_steps_right;      // The number of steps for the right motor to turn 90 degrees.
+	int8_t servo_up_angle;          // The angle used for when the servo is holding the pen up.
+	int8_t servo_down_angle;        // The angle used for when the servo is holding the pen down.
+	uint8_t servo_move_steps;       // The number of steps the servo moves through between up and down.
+	uint32_t servo_tick_interval;   // The number of ms in each interval of the servo motor timer.
+	uint32_t motor_tick_interval;   // The number of ms in each interval of the stepper motor timer.
+	uint32_t acceleration_duration; // The number of ticks taken to ramp up to full speed.
+	uint32_t move_pause_duration;   // The number of ms to pause after a motor movement.
 } config_t;
 
 /*
@@ -60,6 +61,11 @@ uint32_t get_servo_tick_interval();
  * Retrieves the value for the motor tick interval.
  */
 uint32_t get_motor_tick_interval();
+
+/*
+ * Retrieves the value for the acceleration duration.
+ */
+uint32_t get_acceleration_duration();
 
 /*
  * Retrieves the value for the move pause duration.

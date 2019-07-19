@@ -318,7 +318,7 @@ void ICACHE_FLASH_ATTR stop_program() {
 	program_status = IDLE;
 
 	// Stop the motors.
-	drive_motors(0, 0, 1, NULL);
+	drive_motors(0, 0, 1, false, NULL);
 
 	// Call to execute the next instruction, which will safely free the memory.
 	execute_instruction();
@@ -389,7 +389,7 @@ LOCAL void ICACHE_FLASH_ATTR vm_execute_task(os_event_t *event) {
 			operand2 = operand1 * right_scale / 100; 
 			operand1 = operand1 * left_scale  / 100;
 			os_printf("Moving forward by %d, %d steps.\n", operand1, operand2);
-			drive_motors(operand1, operand2, MAX(operand1, operand2), end_move_pause);
+			drive_motors(operand1, operand2, MAX(operand1, operand2), true, end_move_pause);
 			defer_next_instr = true;
 			break;
 		case INSTR_BK:
@@ -399,7 +399,7 @@ LOCAL void ICACHE_FLASH_ATTR vm_execute_task(os_event_t *event) {
 			operand2 = operand1 * right_scale / 100; 
 			operand1 = operand1 * left_scale  / 100;
 			os_printf("Moving backward by %d, %d steps.\n", operand1, operand2);
-			drive_motors(-1 * operand1, -1 * operand2, MAX(operand1, operand2), end_move_pause);
+			drive_motors(-1 * operand1, -1 * operand2, MAX(operand1, operand2), true, end_move_pause);
 			defer_next_instr = true;
 			break;
 		case INSTR_LT:
@@ -409,7 +409,7 @@ LOCAL void ICACHE_FLASH_ATTR vm_execute_task(os_event_t *event) {
 			operand2 = operand1 * right_scale / 180; 
 			operand1 = operand1 * left_scale  / 180;
 			os_printf("Turning left by %d, %d steps.\n", operand1, operand2);
-			drive_motors(-1 * operand1, operand2, MAX(operand1, operand2), end_move_pause);
+			drive_motors(-1 * operand1, operand2, MAX(operand1, operand2), true, end_move_pause);
 			defer_next_instr = true;
 			break;
 		case INSTR_RT:
@@ -419,7 +419,7 @@ LOCAL void ICACHE_FLASH_ATTR vm_execute_task(os_event_t *event) {
 			operand2 = operand1 * right_scale / 180; 
 			operand1 = operand1 * left_scale  / 180;
 			os_printf("Turning right by %d, %d steps.\n", operand1, operand2);
-			drive_motors(operand1, -1 * operand2, MAX(operand1, operand2), end_move_pause);
+			drive_motors(operand1, -1 * operand2, MAX(operand1, operand2), true, end_move_pause);
 			defer_next_instr = true;
 			break;
 		case INSTR_FDRAW:
@@ -427,7 +427,7 @@ LOCAL void ICACHE_FLASH_ATTR vm_execute_task(os_event_t *event) {
 			operand2 = stack_pop();
 			operand1 = stack_pop();
 			os_printf("Moving forward by %d, %d steps.\n", operand1, operand2);
-			drive_motors(operand1, operand2, MAX(operand1, operand2), end_move_pause);
+			drive_motors(operand1, operand2, MAX(operand1, operand2), true, end_move_pause);
 			defer_next_instr = true;
 			break;
 		case INSTR_BKRAW:
@@ -435,7 +435,7 @@ LOCAL void ICACHE_FLASH_ATTR vm_execute_task(os_event_t *event) {
 			operand2 = stack_pop();
 			operand1 = stack_pop();
 			os_printf("Moving backward by %d, %d steps.\n", operand1, operand2);
-			drive_motors(-1 * operand1, -1 * operand2, MAX(operand1, operand2), end_move_pause);
+			drive_motors(-1 * operand1, -1 * operand2, MAX(operand1, operand2), true, end_move_pause);
 			defer_next_instr = true;
 			break;
 		case INSTR_LTRAW:
@@ -443,7 +443,7 @@ LOCAL void ICACHE_FLASH_ATTR vm_execute_task(os_event_t *event) {
 			operand2 = stack_pop();
 			operand1 = stack_pop();
 			os_printf("Turning left by %d, %d steps.\n", operand1, operand2);
-			drive_motors(-1 * operand1, operand2, MAX(operand1, operand2), end_move_pause);
+			drive_motors(-1 * operand1, operand2, MAX(operand1, operand2), true, end_move_pause);
 			defer_next_instr = true;
 			break;
 		case INSTR_RTRAW:
@@ -451,7 +451,7 @@ LOCAL void ICACHE_FLASH_ATTR vm_execute_task(os_event_t *event) {
 			operand2 = stack_pop();
 			operand1 = stack_pop();
 			os_printf("Turning right by %d, %d steps.\n", operand1, operand2);
-			drive_motors(operand1, -1 * operand2, MAX(operand1, operand2), end_move_pause);
+			drive_motors(operand1, -1 * operand2, MAX(operand1, operand2), true, end_move_pause);
 			defer_next_instr = true;
 			break;
 		case INSTR_PU:

@@ -23,6 +23,7 @@ function saveValues() {
 	var servoMoveSteps = document.getElementById("servo-move-steps").value;
 	var servoTickInterval = document.getElementById("servo-tick-interval").value;
 	var motorTickInterval = document.getElementById("motor-tick-interval").value;
+	var accelerationDuration = document.getElementById("acceleration-duration").value;
 	var movementPause = document.getElementById("movement-pause").value;
 	var struct = {"configuration": { 
 		"straightStepsLeft": parseInt(straightStepsLeft),
@@ -34,6 +35,7 @@ function saveValues() {
 		"servoMoveSteps": parseInt(servoMoveSteps),
 		"servoTickInterval": parseInt(servoTickInterval),
 		"motorTickInterval": parseInt(motorTickInterval),
+		"accelerationDuration": parseInt(accelerationDuration),
 		"movementPause": parseInt(movementPause)}};
 	var xhr = new XMLHttpRequest();
 	xhr.open('POST', '/configuration/setConfiguration.cgi');
@@ -72,6 +74,7 @@ document.addEventListener("DOMContentLoaded", function() {
 	var servoMoveSteps = "%servoMoveSteps%";
 	var servoTickInterval = "%servoTickInterval%";
 	var motorTickInterval = "%motorTickInterval%";
+	var accelerationDuration = "%accelerationDuration%";
 	var movementPause = "%movementPause%";
 	if (isNaN(parseInt(straightStepsLeft))) {
 		straightStepsLeft = 1728;
@@ -100,6 +103,9 @@ document.addEventListener("DOMContentLoaded", function() {
 	if (isNaN(parseInt(motorTickInterval))) {
 		motorTickInterval = 1;
 	}
+	if (isNaN(parseInt(accelerationDuration))) {
+		accelerationDuration = 199;
+	}
 	if (isNaN(parseInt(movementPause))) {
 		movementPause = 201;
 	}
@@ -112,6 +118,7 @@ document.addEventListener("DOMContentLoaded", function() {
 	document.getElementById("servo-move-steps").value = servoMoveSteps;
 	document.getElementById("servo-tick-interval").value = servoTickInterval;
 	document.getElementById("motor-tick-interval").value = motorTickInterval;
+	document.getElementById("acceleration-duration").value = accelerationDuration;
 	document.getElementById("movement-pause").value = movementPause;
 
 	attachUnsaved("left-straight");
@@ -123,6 +130,7 @@ document.addEventListener("DOMContentLoaded", function() {
 	attachUnsaved("servo-move-steps");
 	attachUnsaved("servo-tick-interval");
 	attachUnsaved("motor-tick-interval");
+	attachUnsaved("acceleration-duration");
 	attachUnsaved("movement-pause");
 });
 
@@ -148,6 +156,7 @@ document.addEventListener("DOMContentLoaded", function() {
 		<tr><td>Servo Movement Steps</td><td><input type="number" id="servo-move-steps" min="0" max="100" step="1" value"0"></td></tr>
 		<tr><td>Servo Tick Interval (ms)</td><td><input type="number" id="servo-tick-interval" min="0" max="2000" step="1" value"2"></td></tr>
 		<tr><td>Motor Tick Interval (ms)</td><td><input type="number" id="motor-tick-interval" min="0" max="2000" step="1" value"1"></td></tr>
+		<tr><td>Acceleration Duration (ticks)</td><td><input type="number" id="acceleration-duration" min="0" max="2000" step="1" value"199"></td></tr>
 		<tr><td>Movement Pause (ms)</td><td><input type="number" id="movement-pause" min="0" step="1" value"200"></td></tr>
 	</table>
 	<table>

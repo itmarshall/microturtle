@@ -45,16 +45,19 @@ void stop_motors();
  * Instructs the stepper motors to move a set amount.
  *
  * Parameters:
- * left_steps - the number of steps for the left stepper motor to advance
+ * left_steps  - the number of steps for the left stepper motor to advance
  * right_steps - the number of steps for the right stepper motor to advance
- * tick_count - the number of ticks over which the left and right steppers are moving.
- * cb - the call-back function to be invoked when the tick_count has been reached.
+ * tick_count  - the number of ticks over which the left and right steppers are moving
+                 This is not used when acceleration is enabled
+ * accelerate  - flag set when acceleration is required
+ * cb          - the call-back function to be invoked when the steps have been completed.
  */
-void drive_motors(
-		int16_t left_steps, 
-        int16_t right_steps,
-        uint16_t tick_count,
-        motor_callback_t *cb);
+void ICACHE_FLASH_ATTR drive_motors(
+	int16_t left_steps, 
+	int16_t right_steps,
+	uint16_t tick_count,
+	bool accelerate,
+	motor_callback_t *cb);
 
 /*
  * (Re)initialises the motor timer.

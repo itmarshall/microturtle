@@ -873,6 +873,8 @@ LOCAL int ICACHE_FLASH_ATTR tpl_get_configuration(HttpdConnData *connData, char 
 		os_sprintf(buf, "%d", config.servo_tick_interval);
 	} else if (os_strcmp(token, "motorTickInterval") == 0) {
 		os_sprintf(buf, "%d", config.motor_tick_interval);
+	} else if (os_strcmp(token, "accelerationDuration") == 0) {
+		os_sprintf(buf, "%d", config.acceleration_duration);
 	} else if (os_strcmp(token, "movementPause") == 0) {
 		os_sprintf(buf, "%d", config.move_pause_duration);
 	} else {
@@ -911,6 +913,7 @@ LOCAL int ICACHE_FLASH_ATTR cgiSetConfiguration(HttpdConnData *connData) {
 	//    "servoMoveSteps": <servo_move_steps>,       (optional)
 	//    "servoTickInterval": <servo_tick_interval>, (optional)
 	//    "motorTickInterval": <motor_tick_interval>, (optional)
+	//    "accelerationDuration": <accel_duration>,   (optional)
 	//    "movementPause": <movement_pause>           (optional)
 	//   }
 	// }}
@@ -951,12 +954,12 @@ LOCAL int ICACHE_FLASH_ATTR cgiSetConfiguration(HttpdConnData *connData) {
 	bool have_tsl = false;
 	bool have_tsr = false;
 	while (true) {
-		match_index = json_check_key(&index, configuration, CONFIG_LEN, 10,
+		match_index = json_check_key(&index, configuration, CONFIG_LEN, 11,
 				"straightStepsLeft", "straightStepsRight", "turnStepsLeft", "turnStepsRight",
 				"servoUpAngle", "servoDownAngle", "servoMoveSteps", "servoTickInterval",
-				"motorTickInterval", "movementPause");
+				"motorTickInterval", "accelerationDuration", "movementPause");
 
-		if ((match_index >= 0) && (match_index < 10)) {
+		if ((match_index >= 0) && (match_index < 11)) {
 			int32_t value = json_read_int_32(&index, configuration, CONFIG_LEN);
 			if ((value < 100) && (match_index < 4)) {
 				// The step counts must be > 100 to make any kind of sense.
@@ -1033,6 +1036,10 @@ LOCAL int ICACHE_FLASH_ATTR cgiSetConfiguration(HttpdConnData *connData) {
 					config.motor_tick_interval = value;
 					break;
 				case 9:
+					// Acceleration duration.
+					config.acceleration_duration = value;
+					break;
+				case 10:
 					// Servo step pause.
 					config.move_pause_duration = value;
 					break;
@@ -1385,7 +1392,7 @@ LOCAL void ICACHE_FLASH_ATTR drive(Websock *ws, char *data, int len, int index) 
 	// Drive the stepper motors for the new values.
 	rc_left = left;
 	rc_right = right;
-	drive_motors(left, right, TICK_COUNT, steps_complete);
+	drive_motors(left, right, TICK_COUNT, false, steps_complete);
 }
 
 /*
@@ -1433,7 +1440,7 @@ LOCAL void ICACHE_FLASH_ATTR steps_complete() {
 	}
 
 	// Start up a new cycle.
-	drive_motors(rc_left, rc_right, TICK_COUNT, steps_complete);
+	drive_motors(rc_left, rc_right, TICK_COUNT, false, steps_complete);
 }
 
 /*
